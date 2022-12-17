@@ -144,6 +144,31 @@ RLine::RLine(QVector3D const & v0, QVector3D const & v1, QColor const & color, Q
         auto * buf = new Qt3DCore::QBuffer(m_geometry);
         {
             QByteArray barray;
+            barray.resize(3 * sizeof(float));
+            float * ptr = reinterpret_cast<float *>(barray.data());
+            ptr[0] = 0.0;
+            ptr[1] = 0.0;
+            ptr[2] = 0.0;
+            buf->setData(barray);
+        }
+
+        {
+            auto * vertices = new Qt3DCore::QAttribute(m_geometry);
+            vertices->setName(Qt3DCore::QAttribute::defaultNormalAttributeName());
+            vertices->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
+            vertices->setVertexBaseType(Qt3DCore::QAttribute::Float);
+            vertices->setVertexSize(3);
+            vertices->setBuffer(buf);
+            vertices->setByteStride(3 * sizeof(float));
+            vertices->setCount(1);
+            m_geometry->addAttribute(vertices);
+        }
+    }
+
+    {
+        auto * buf = new Qt3DCore::QBuffer(m_geometry);
+        {
+            QByteArray barray;
             barray.resize(2 * sizeof(uint32_t));
             auto * indices = reinterpret_cast<uint32_t *>(barray.data());
             indices[0] = 0;
