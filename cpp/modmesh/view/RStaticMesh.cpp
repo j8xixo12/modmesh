@@ -81,11 +81,13 @@ void RStaticMesh::update_geometry_impl(StaticMesh const & mh, Qt3DCore::QGeometr
         auto * buf = new Qt3DCore::QBuffer(geom);
         {
             QByteArray barray;
-            barray.resize(mh.nedge());
+            barray.resize(mh.nnode() * 3 * sizeof(float));
             float * ptr = reinterpret_cast<float *>(barray.data());
-            for (int i = 0; i < mh.nedge(); ++i)
+            for (int i = 0; i < mh.nnode(); ++i)
             {
-                ptr[i] = 0.0;
+                ptr[i * 3] = 0.0;
+                ptr[i * 3 + 1] = 0.0;
+                ptr[i * 3 + 2] = 0.0;
             }
             buf->setData(barray);
         }
@@ -98,7 +100,7 @@ void RStaticMesh::update_geometry_impl(StaticMesh const & mh, Qt3DCore::QGeometr
             vertices->setVertexSize(3);
             vertices->setBuffer(buf);
             vertices->setByteStride(3 * sizeof(float));
-            vertices->setCount(mh.nedge());
+            vertices->setCount(mh.nnode());
             geom->addAttribute(vertices);
         }
     }
