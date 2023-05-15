@@ -50,7 +50,7 @@ __all__ = _from_impl + [  # noqa: F822
 # Try to import the viewer code but easily give up.
 enable = False
 try:
-    from _modmesh import view as _vimpl  # noqa: F401
+    from _modmesh import view as _vimpl, Toggle  # noqa: F401
     enable = True
     # Before using _modmesh mianWindow api, the QMainWindow signature need
     # to be imported or will get type error:
@@ -59,8 +59,9 @@ try:
     # registered it to Shiboken6 to prevent runtime error occured:
     # RuntimeError:
     # Internal C++ object (PySide6.QtGui.QWindow) already deleted.
-    from PySide6.QtWidgets import QMainWindow  # noqa: F401
-    _main_window = _vimpl.RManager.instance.mainWindow
+    if Toggle.instance.solid.use_pyside:
+        from PySide6.QtWidgets import QMainWindow  # noqa: F401
+        _main_window = _vimpl.RManager.instance.mainWindow
 except ImportError:
     pass
 
