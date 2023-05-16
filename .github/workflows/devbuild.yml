@@ -387,6 +387,18 @@ jobs:
           Get-Command clang-tidy
           Get-Command flake8
 
+      - name: set up PATH
+        run: |
+          $pyside6_path = $(python3 -c "import sys, os, PySide6; sys.stdout.write(os.path.dirname(PySide6.__file__))")
+          $shiboken6_path = $(python3 -c "import sys, os, shiboken6; sys.stdout.write(os.path.dirname(shiboken6.__file__))")
+          $curr_path = $env:PATH
+          $env:PATH = "$env:Qt6_DIR;$shiboken6_path;$pyside6_path;$curr_path"
+          $curr_path = $env:LIB
+          $env:LIB = "$curr_path;$shiboken6_path;$pyside6_path"
+
+          echo $env:PATH
+          #test
+
       - name: cmake ALL_BUILD
         run: |
           cmake `
@@ -404,8 +416,20 @@ jobs:
             --config ${{ matrix.cmake_build_type }} `
             --target run_gtest
 
+      - name: test
+        run: |
+          cd D:\a\modmesh\modmesh\build\cpp\binary\viewer\${{ matrix.cmake_build_type }}
+          dumpbin /DEPENDENTS viewer.exe
+          echo $LASTEXITCODE
+          python -c "import PySide6; print(PySide6.__version__)"
+
       - name: cmake run_viewer_pytest
         run: |
+          $pyside6_path = $(python3 -c "import sys, os, PySide6; sys.stdout.write(os.path.dirname(PySide6.__file__))")
+          $shiboken6_path = $(python3 -c "import sys, os, shiboken6; sys.stdout.write(os.path.dirname(shiboken6.__file__))")
+          $env:PATH = "$shiboken6_path;$pyside6_path;$env:PATH"
+          echo $env:PATH
           cmake --build ${{ github.workspace }}/build `
             --config ${{ matrix.cmake_build_type }} `
             --target run_viewer_pytest
+

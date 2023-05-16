@@ -104,7 +104,7 @@ if (BUILD_QT)
         Qt::Core
         Qt::Gui
     )
-
+    message(STATUS "${PYSIDE6_LIBFILE}")
     target_link_libraries(
         modmesh_primary PUBLIC
         ${PYSIDE6_LIBFILE}

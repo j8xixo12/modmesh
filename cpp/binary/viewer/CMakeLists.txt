@@ -43,6 +43,13 @@ if(WIN32)
     )
 endif(WIN32)
 
+if (MSVC)
+	set(DLL_LIBS ${PYSIDE6_LIBFILE}
+		         ${SHIBOKEN6_LIBFILE}
+	)
+	file(COPY ${DLL_LIBS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})	
+endif()
+
 qt_add_resources(
     viewer "app_icon"
     PREFIX "/"
