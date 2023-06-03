@@ -193,7 +193,7 @@ jobs:
 
     - name: make run_viewer_pytest
       run: |
-        export LD_LIBRARY_PATH=$(python3 -c "import sys, os, shiboken6; sys.stdout.write(os.path.dirname(shiboken6.__file__))")
+        # export LD_LIBRARY_PATH=$(python3 -c "import sys, os, shiboken6; sys.stdout.write(os.path.dirname(shiboken6.__file__))")
         make run_viewer_pytest VERBOSE=0
 
   build_macos:

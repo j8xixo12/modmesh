@@ -82,6 +82,11 @@ set_target_properties(
     MACOSX_BUNDLE TRUE
 )
 
+set(CMAKE_BUILD_RPATH
+    ${PYSIDE6_PYTHON_PACKAGE_PATH}
+    ${SHIBOKEN6_PYTHON_PACKAGE_PATH}
+)
+
 if(APPLE)
     find_library(APPLE_FWK_FOUNDATION Foundation REQUIRED)
     find_library(APPLE_FWK_QUARTZ_CORE QuartzCore REQUIRED)
