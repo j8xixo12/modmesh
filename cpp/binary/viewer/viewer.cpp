@@ -32,6 +32,7 @@
 PYBIND11_EMBEDDED_MODULE(_modmesh, mod) // NOLINT
 {
     modmesh::python::initialize(mod);
+    pybind11::print("modmesh embedded module init");
 }
 
 int main(int argc, char ** argv)

@@ -33,7 +33,9 @@ modmesh: the description of the package is intentionally left blank
 # Use flake8 http://flake8.pycqa.org/en/latest/user/error-codes.html
 
 
+print("ready import core *")
 from . import core
+print("finish import core *")
 from .core import *  # noqa: F401, F403
 from . import apputil  # noqa: F401
 from . import view  # noqa: F401

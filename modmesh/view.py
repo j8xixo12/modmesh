@@ -38,6 +38,7 @@ _from_impl = [  # noqa: F822
     'RLine',
     'RPythonConsoleDockWidget',
     'RManager',
+    'RStaticMesh',
     'mgr',
 ]
 
@@ -72,6 +73,7 @@ def populate_applications():
     mw.addApplication("euler1d")
     mw.addApplication("linear_wave")
     mw.addApplication("bad_euler1d")
+    mw.addApplication("mesh_viewer")
 
 
 def reset_applications():

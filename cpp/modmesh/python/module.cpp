@@ -40,6 +40,7 @@ namespace python
 
 void initialize(pybind11::module_ mod)
 {
+    pybind11::print("modmesh embedded modules initialize");
     initialize_toggle(mod);
     initialize_buffer(mod);
     initialize_universe(mod);
@@ -66,10 +67,11 @@ int program_entrance(int argc, char ** argv)
 
     // Initialize the Python interpreter.
     Interpreter::instance()
-        .initialize()
+        .initialize() // bring up embedded python interpreter
         .setup_modmesh_path()
         .setup_process();
 
+    pybind11::print("modmesh program_entrance 1");
     int ret = 0;
 
     if (clinfo.python_main())

@@ -126,6 +126,7 @@ QT_TYPE_CASTER(QCoreApplication, _("QCoreApplication"));
 QT_TYPE_CASTER(QApplication, _("QApplication"));
 QT_TYPE_CASTER(QMainWindow, _("QMainWindow"));
 QT_TYPE_CASTER(QMdiSubWindow, _("QMdiSubWindow"));
+QT_TYPE_CASTER(Qt3DCore::QNode, _("QNode"));
 
 } /* end namespace detail */
 
@@ -138,6 +139,25 @@ namespace modmesh
 
 namespace python
 {
+class MODMESH_PYTHON_WRAPPER_VISIBILITY WrapRStaticMesh
+    : public WrapBase<WrapRStaticMesh, RStaticMesh, QPointer<RStaticMesh>>
+{
+    friend root_base_type;
+    WrapRStaticMesh(pybind11::module & mod, char const * pyname, char const * pydoc)
+        : root_base_type(mod, pyname, pydoc)
+    {
+        namespace py = pybind11;
+
+        (*this)
+            .def(
+                    py::init(
+                        [] (std::shared_ptr<StaticMesh> const & mesh, Qt3DCore::QNode * parent)
+                        { return new wrapped_type(mesh, parent); }),
+                        py::arg("mesh"),
+                        py::arg("parent") = py::none()
+                );
+    }
+};
 
 class MODMESH_PYTHON_WRAPPER_VISIBILITY WrapR3DWidget
     : public WrapBase<WrapR3DWidget, R3DWidget, QPointer<R3DWidget>>
@@ -152,10 +172,16 @@ class MODMESH_PYTHON_WRAPPER_VISIBILITY WrapR3DWidget
         namespace py = pybind11;
 
         (*this)
+            .def(
+                    py::init(
+                        [] (QWidget * parent)
+                        { return new wrapped_type (nullptr, nullptr, parent); }),
+                        py::arg("parent"))
             .def_property_readonly("mesh", &wrapped_type::mesh)
             .def("updateMesh", &wrapped_type::updateMesh, py::arg("mesh"))
             .def("updateWorld", &wrapped_type::updateWorld, py::arg("world"))
-            .def("showMark", &wrapped_type::showMark)
+           .def("showMark", &wrapped_type::showMark)
+           .def("show", &wrapped_type::show)
             .def(
                 "clipImage",
                 [](wrapped_type & self)
@@ -466,6 +492,7 @@ void wrap_view(pybind11::module & mod)
     WrapRPythonConsoleDockWidget::commit(mod, "RPythonConsoleDockWidget", "RPythonConsoleDockWidget");
     WrapRManager::commit(mod, "RManager", "RManager");
     WrapRManagerProxy::commit(mod, "RManagerProxy", "RManagerProxy");
+    WrapRStaticMesh::commit(mod, "RStaticMesh", "RStaticMesh");
 
     mod.attr("mgr") = RManagerProxy();
 
