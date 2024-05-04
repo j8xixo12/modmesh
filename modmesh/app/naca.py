@@ -96,15 +96,26 @@ def calc_naca4_points(number, npoint, open_trailing_edge=False,
 
 
 def draw_naca4(world, number, npoint, fac, off_x, off_y, **kw):
+    Vector = core.Vector3dFp64
     crds = calc_naca4_points(number=number, npoint=npoint, **kw)
     crds *= fac  # scaling factor
     crds[:, 0] += off_x  # offset in x
     crds[:, 1] += off_y  # offset in y
-    for it in range(crds.shape[0] - 1):
-        e = world.add_edge(crds[it, 0], crds[it, 1], 0,
-                           crds[it + 1, 0], crds[it + 1, 1], 0)
-        print(f"{it}: {e}")
-    print("nedge:", world.nedge)
+    for it in range(crds.shape[0] - 2):
+        b = world.add_bezier([Vector(crds[it, 0], crds[it, 1], 0),
+                              Vector(crds[it+1, 0], crds[it+1, 1], 0),
+                              Vector(crds[it+2, 0], crds[it+2, 1], 0)])
+        b.sample(25)
+    #  for it in range(crds.shape[0] - 2):
+    #      b = world.add_bezier([Vector(crds[it, 0], crds[it, 1], 0),
+    #                            Vector(crds[it+1, 0], crds[it+1, 1], 0),
+    #                            Vector(crds[it+2, 0], crds[it+2, 1], 0)])
+    #      b.sample(2)
+    #  for it in range(crds.shape[0] - 1):
+    #      e = world.add_edge(crds[it, 0], crds[it, 1], 0,
+    #                         crds[it + 1, 0], crds[it + 1, 1], 0)
+    #      print(f"{it}: {e}")
+    #  print("nedge:", world.nedge)
     return crds
 
 
@@ -113,7 +124,7 @@ def app_main():
     A simple example for drawing a couple of cubic Bezier curves.
     """
     w = core.WorldFp64()
-    draw_naca4(w, number='0012', npoint=101, fac=5.0, off_x=0.0, off_y=2.0,
+    draw_naca4(w, number='6412', npoint=101, fac=5.0, off_x=0.0, off_y=2.0,
                open_trailing_edge=False, cosine_spacing=True)
     return w
 

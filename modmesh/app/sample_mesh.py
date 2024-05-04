@@ -363,7 +363,7 @@ def make_bezier():
     b1 = w.add_bezier(
         [Vector(0, 0, 0), Vector(1, 1, 0), Vector(3, 1, 0),
          Vector(4, 0, 0)])
-    b1.sample(7)
+    b1.sample(5)
     b2 = w.add_bezier(
         [Vector(4, 0, 0), Vector(3, -1, 0), Vector(1, -1, 0),
          Vector(0, 0, 0)])

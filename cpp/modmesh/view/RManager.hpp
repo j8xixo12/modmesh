@@ -92,6 +92,7 @@ private:
     QMenu * m_appMenu = nullptr;
     QMenu * m_cameraMenu = nullptr;
     QMenu * m_eulerMenu = nullptr;
+    QWidget * test = nullptr;
 
     RPythonConsoleDockWidget * m_pycon = nullptr;
     QMdiArea * m_mdiArea = nullptr;

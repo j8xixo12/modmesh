@@ -166,6 +166,51 @@ void RManager::setUpMenu()
     }
 
     {
+        m_appMenu = m_mainWindow->menuBar()->addMenu(QString("Test"));
+        auto * action = new RAction(
+                QString("app"),
+                QString("test app"),
+                [this]()
+                {
+                    XYPlot *plot = new XYPlot;
+                    plot->setWindowTitle("XY Plot Example");
+                    plot->resize(400, 300);
+
+                    // Set axis titles
+                    plot->setAxisTitles("X Axis", "Y Axis");
+
+                    // Set axis tick size
+                    plot->setAxisTickSize(10);
+
+                    // Set line width
+                    plot->setLineWidth(3);
+
+                    // Set plot title
+                    plot->setPlotTitle("XY Plot Example");
+
+                    // Set legend
+                    plot->setLegend("Legend");
+
+                    // Set data points
+                    QList<QLineF> dataPoints(10);
+                    dataPoints.append(QLineF(0, 0, 100, 100));
+                    dataPoints.append(QLineF(100, 100, 200, 250));
+                    dataPoints.append(QLineF(200, 250, 300, 200));
+                    dataPoints.append(QLineF(300, 200, 400, 150));
+                    dataPoints.append(QLineF(400, 150, 50, 30));
+                    plot->setData(dataPoints);
+
+                    // Show the plot
+                    this->addSubWindow(plot);
+                    plot->replot();
+                    plot->show();
+                    qDebug() << "Show test app";
+                }
+                );
+                m_appMenu->addAction(action);
+    }
+
+    {
         m_cameraMenu = m_mainWindow->menuBar()->addMenu(QString("Camera"));
 
         auto * use_orbit_camera = new RAction(
