@@ -42,6 +42,14 @@
 // See more details in the issue: https://github.com/solvcon/modmesh/issues/283
 #include <modmesh/buffer/pymod/SimpleArrayCaster.hpp>
 
+// Forward declare the format_descriptor specializations
+PYBIND11_NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
+PYBIND11_NAMESPACE_BEGIN(detail)
+template <typename T> struct format_descriptor;
+PYBIND11_NAMESPACE_END(detail)
+PYBIND11_NAMESPACE_END(PYBIND11_NAMESPACE)
+
+
 namespace modmesh
 {
 
@@ -165,10 +173,22 @@ public:
         {
             stride.push_back(i * sizeof(T));
         }
+        // Special handling for Complex types
+        std::string format;
+        if constexpr (is_complex_v<T>) {
+            if constexpr (std::is_same_v<T, Complex<double>>) {
+                format = "=Zd";  // complex128
+            } else {
+                format = "=Zf";  // complex64
+            }
+        } else {
+            format = pybind11::format_descriptor<T>::format();
+        }
+
         return pybind11::buffer_info(
             array.data(), /* Pointer to buffer */
             sizeof(T), /* Size of one scalar */
-            pybind11::format_descriptor<T>::format(), /* Python struct-style format descriptor */
+            format, /* Python struct-style format descriptor */
             array.ndim(), /* Number of dimensions */
             std::vector<size_t>(array.shape().begin(), array.shape().end()), /* Buffer dimensions */
             stride /* Strides (in bytes) for each index */
@@ -302,5 +322,42 @@ private:
 
 } /* end namespace python */
 } /* end namespace modmesh */
+
+// Specializations for Complex types to use native NumPy complex format
+PYBIND11_NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
+PYBIND11_NAMESPACE_BEGIN(detail)
+
+template<>
+struct npy_format_descriptor<modmesh::Complex<double>> {
+    static constexpr auto name = const_name("numpy.complex128");
+    static constexpr int value = npy_api::NPY_CDOUBLE_;
+
+    static pybind11::dtype dtype() {
+        return pybind11::dtype("complex128");
+    }
+
+    static std::string format() {
+        return "=Zd";  // native complex128
+    }
+};
+
+template<>
+struct npy_format_descriptor<modmesh::Complex<float>> {
+    static constexpr auto name = const_name("numpy.complex64");
+    static constexpr int value = npy_api::NPY_CFLOAT_;
+
+    static pybind11::dtype dtype() {
+        return pybind11::dtype("complex64");
+    }
+
+    static std::string format() {
+        return "=Zf";  // native complex64
+    }
+};
+
+PYBIND11_NAMESPACE_END(detail)
+PYBIND11_NAMESPACE_END(PYBIND11_NAMESPACE)
+
+
 
 // vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
