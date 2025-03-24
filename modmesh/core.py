@@ -106,6 +106,7 @@ __all__ = [  # noqa: F822
     'CurvePadFp64',
     'WorldFp32',
     'WorldFp64',
+    'transform',
     'testhelper'
 ]
 
