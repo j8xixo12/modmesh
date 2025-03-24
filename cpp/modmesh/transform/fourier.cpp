@@ -3,9 +3,6 @@
 namespace modmesh
 {
 
-namespace transform
-{
-
 namespace detail
 {
 
@@ -23,7 +20,5 @@ size_t bit_reverse(size_t n, const size_t bits)
 }
 
 } /* end namespace detail */
-
-} /* end namespace transform */
 
 } // namespace modmesh

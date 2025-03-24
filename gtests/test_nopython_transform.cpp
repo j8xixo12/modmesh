@@ -123,44 +123,44 @@ TYPED_TEST_SUITE(InverseTest, TestTypes);
 
 TYPED_TEST(ParsevalTest, fft)
 {
-    modmesh::transform::fft<modmesh::Complex, TypeParam>(this->signal, this->out);
+    modmesh::Transform::fft<modmesh::Complex, TypeParam>(this->signal, this->out);
 
     this->verify_parseval();
 }
 
 TYPED_TEST(ParsevalTest, dft)
 {
-    modmesh::transform::dft<modmesh::Complex, TypeParam>(this->signal, this->out);
+    modmesh::Transform::dft<modmesh::Complex, TypeParam>(this->signal, this->out);
 
     this->verify_parseval();
 }
 
 TYPED_TEST(DeltaFunctionTest, fft)
 {
-    modmesh::transform::fft<modmesh::Complex, TypeParam>(this->signal, this->out);
+    modmesh::Transform::fft<modmesh::Complex, TypeParam>(this->signal, this->out);
 
     this->verify_delta_function();
 }
 
 TYPED_TEST(DeltaFunctionTest, dft)
 {
-    modmesh::transform::dft<modmesh::Complex, TypeParam>(this->signal, this->out);
+    modmesh::Transform::dft<modmesh::Complex, TypeParam>(this->signal, this->out);
 
     this->verify_delta_function();
 }
 
 TYPED_TEST(InverseTest, fft)
 {
-    modmesh::transform::fft<modmesh::Complex, TypeParam>(this->signal, this->freq_domain);
-    modmesh::transform::ifft<modmesh::Complex, TypeParam>(this->freq_domain, this->time_domain);
+    modmesh::Transform::fft<modmesh::Complex, TypeParam>(this->signal, this->freq_domain);
+    modmesh::Transform::ifft<modmesh::Complex, TypeParam>(this->freq_domain, this->time_domain);
 
     this->verify_inverse_fft_function();
 }
 
 TYPED_TEST(InverseTest, dft)
 {
-    modmesh::transform::dft<modmesh::Complex, TypeParam>(this->signal, this->freq_domain);
-    modmesh::transform::ifft<modmesh::Complex, TypeParam>(this->freq_domain, this->time_domain);
+    modmesh::Transform::dft<modmesh::Complex, TypeParam>(this->signal, this->freq_domain);
+    modmesh::Transform::ifft<modmesh::Complex, TypeParam>(this->freq_domain, this->time_domain);
 
     this->verify_inverse_fft_function();
 }
