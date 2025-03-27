@@ -13,7 +13,7 @@ size_t bit_reverse(size_t n, const size_t bits);
 
 } /* end namespace detail */
 
-class Transform
+struct Transform
 {
 public:
     Transform() = default;
