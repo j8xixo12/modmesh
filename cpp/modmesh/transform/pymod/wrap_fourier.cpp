@@ -25,7 +25,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include <modmesh/modmesh.hpp>
 
 #include <modmesh/transform/pymod/transform_pymod.hpp>
@@ -57,12 +56,7 @@ class MODMESH_PYTHON_WRAPPER_VISIBILITY WrapTransform
                 py::init(
                     []()
                     { return std::make_shared<wrapped_type>(); }))
-            .def_static("fft", &wrapped_type::fft<modmesh::Complex, float>)
-            .def_static("ifft", &wrapped_type::ifft<modmesh::Complex, float>)
-            .def_static("dft", &wrapped_type::dft<modmesh::Complex, float>)
-            .def_static("fft", &wrapped_type::fft<modmesh::Complex, double>)
-            .def_static("ifft", &wrapped_type::ifft<modmesh::Complex, double>)
-            .def_static("dft", &wrapped_type::dft<modmesh::Complex, double>);
+            .def_static("fft", &wrapped_type::fft<modmesh::Complex, double>, py::arg("input"), py::arg("output"));
     }
 
 }; /* end class WrapTransform */
