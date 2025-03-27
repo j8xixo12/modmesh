@@ -41,7 +41,7 @@ public:
     }
 
     template <template <typename> class T1, typename T2>
-    void fft_radix_2(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
+    static void fft_radix_2(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
     {
         size_t N = in.size();
         const unsigned int bits = static_cast<unsigned int>(std::log2(N));
@@ -77,7 +77,7 @@ public:
     }
     
     template <template <typename> class T1, typename T2>
-    void ifft(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
+    static void ifft(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
     {
         size_t N = in.size();
         SimpleArray<T1<T2>> in_conj{modmesh::small_vector<size_t>{N}, T1<T2>{0.0, 0.0}};
@@ -96,7 +96,7 @@ public:
     }
     
     template <template <typename> class T1, typename T2>
-    void fft_bluestein(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
+    static void fft_bluestein(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
     {
         const size_t N = in.size();
         // Calculate a length with power of 2 and at least 2N-1
@@ -142,7 +142,7 @@ public:
     }
     
     template <template <typename> class T1, typename T2>
-    void fft(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
+    static void fft(SimpleArray<T1<T2>> const & in, SimpleArray<T1<T2>> & out)
     {
         const size_t N = in.size();
     
@@ -155,7 +155,7 @@ public:
             fft_bluestein<T1, T2>(in, out);
         }
     }
-}
+};
 
 } /* end namespace modmesh */
 
