@@ -78,6 +78,37 @@ class FourierTransformTB(mm.testing.TestBase):
             self.assert_allclose(mm_output[i].real, np_output[i].real)
             self.assert_allclose(mm_output[i].imag, np_output[i].imag)
 
+    def test_numpy_dft_fft_call_multiple_times_comparsion(self):
+        '''
+        For fix https://github.com/solvcon/modmesh/issues/547, adding
+        test case to make sure there are no side effect after calling
+        dft and fft.
+        '''
+        input_size = 100
+        
+        mm_input = self.SimpleArray(input_size)
+        for i in range(input_size):
+            mm_input[i] = self.complex(self.real_rng(), self.imag_rng())
+
+        np_input = np.array(mm_input, copy=False)
+
+        mm_output_dft = self.SimpleArray(input_size, self.complex())
+        mm_output_fft = self.SimpleArray(input_size, self.complex())
+
+        np_output = np.fft.fft(np_input)
+
+        mm.FourierTransform.dft(mm_input, mm_output_dft)
+        mm.FourierTransform.dft(mm_input, mm_output_dft)
+
+        mm.FourierTransform.fft(mm_input, mm_output_fft)
+        mm.FourierTransform.fft(mm_input, mm_output_fft)
+
+        for i in range(input_size):
+            self.assert_allclose(mm_output_dft[i].real, np_output[i].real)
+            self.assert_allclose(mm_output_dft[i].imag, np_output[i].imag)
+            self.assert_allclose(mm_output_fft[i].real, np_output[i].real)
+            self.assert_allclose(mm_output_fft[i].imag, np_output[i].imag)
+
     def test_numpy_ifft_comparison(self):
         input_size = 100
 
