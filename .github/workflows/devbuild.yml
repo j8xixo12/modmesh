@@ -74,9 +74,68 @@ jobs:
           make standalone_buffer
           echo "::endgroup::"
 
-  build:
+  changes:
 
     needs: [check_skip]
+
+    if: |
+      needs.check_skip.outputs.skip != 'true' && (
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' &&
+       (vars.MMGH_PUSH_RUN_BRANCH == '*' ||
+        contains(vars.MMGH_PUSH_RUN_BRANCH, github.ref_name))) ||
+      (github.event_name == 'schedule' &&
+      vars.MMGH_NIGHTLY == 'enable'))
+
+    name: detect_changes
+
+    runs-on: ubuntu-24.04
+
+    timeout-minutes: 5
+
+    outputs:
+      qt: ${{ steps.decide.outputs.qt }}
+
+    steps:
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # Only PRs use path filtering. push/schedule always build the full
+      # Qt/pilot stack so GUI breakage can never land on a protected branch.
+      - name: detect gui-related changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            qt:
+              - 'cpp/modmesh/pilot/**'
+              - 'cpp/binary/pilot/**'
+              - 'cpp/modmesh/universe/**'
+              - 'modmesh/pilot/**'
+              - 'resources/pilot/**'
+              - 'CMakeLists.txt'
+              - 'cpp/modmesh/CMakeLists.txt'
+              - 'Makefile'
+              - '.github/**'
+
+      - name: decide whether to build Qt
+        id: decide
+        run: |
+          echo "::group::decide whether to build Qt"
+          if [ "${{ github.event_name }}" != "pull_request" ] || \
+             [ "${{ steps.filter.outputs.qt }}" = "true" ]; then
+            echo "qt=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "qt=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
+  build:
+
+    needs: [check_skip, changes]
 
     if: |
       needs.check_skip.outputs.skip != 'true' && (
@@ -129,12 +188,14 @@ jobs:
       uses: ./.github/actions/setup_linux
       with:
         workflow: 'build'
+        build_qt: ${{ needs.changes.outputs.qt }}
 
     - name: setup dependencies for macOS
       if: runner.os == 'macOS'
       uses: ./.github/actions/setup_macos
       with:
         workflow: 'build'
+        build_qt: ${{ needs.changes.outputs.qt }}
 
     - name: ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
@@ -175,6 +236,7 @@ jobs:
         echo "::endgroup::"
 
     - name: make buildext BUILD_QT=ON
+      if: needs.changes.outputs.qt == 'true'
       run: |
         echo "::group::make buildext BUILD_QT=ON"
         rm -f build/*/Makefile
@@ -187,6 +249,7 @@ jobs:
         echo "::endgroup::"
 
     - name: make pytest BUILD_QT=ON
+      if: needs.changes.outputs.qt == 'true'
       run: |
         echo "::group::make pytest BUILD_QT=ON"
         python3 -c "import modmesh; assert modmesh.HAS_PILOT == True"
@@ -208,6 +271,7 @@ jobs:
         echo "::endgroup::"
 
     - name: make pilot
+      if: needs.changes.outputs.qt == 'true'
       run: |
         echo "::group::make pilot"
         rm -f build/*/Makefile
@@ -219,6 +283,7 @@ jobs:
         echo "::endgroup::"
 
     - name: make run_pilot_pytest
+      if: needs.changes.outputs.qt == 'true'
       run: |
         echo "::group::make run_pilot_pytest"
         export LD_LIBRARY_PATH=$(python3 -c "import sys, os, shiboken6; sys.stdout.write(os.path.dirname(shiboken6.__file__))")

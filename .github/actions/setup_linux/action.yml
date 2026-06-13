@@ -5,6 +5,9 @@ inputs:
   workflow:
     description: The name of the workflow that will use this action
     required: true
+  build_qt:
+    description: Whether Qt-dependent dependencies need to be installed
+    default: 'true'
 
 runs:
   using: composite
@@ -25,7 +28,7 @@ runs:
         echo "::endgroup::"
 
     - name: Cache Qt download
-      if: "${{ inputs.workflow == 'lint' || inputs.workflow == 'build' }}"
+      if: "${{ (inputs.workflow == 'lint' || inputs.workflow == 'build') && inputs.build_qt == 'true' }}"
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/Qt
@@ -104,7 +107,7 @@ runs:
         echo "::endgroup::"
 
     - name: install qt
-      if: "${{ inputs.workflow == 'lint' || inputs.workflow == 'build' }}"
+      if: "${{ (inputs.workflow == 'lint' || inputs.workflow == 'build') && inputs.build_qt == 'true' }}"
       uses: jurplel/install-qt-action@v4
       with:
         version: '6.8.1'
@@ -129,6 +132,13 @@ runs:
       run: |
         echo "::group::dependency by pip (lint & build)"
         sudo pip3 install matplotlib jsonschema
+        echo "::endgroup::"
+
+    - name: dependency by pip (qt)
+      if: "${{ (inputs.workflow == 'lint' || inputs.workflow == 'build') && inputs.build_qt == 'true' }}"
+      shell: bash
+      run: |
+        echo "::group::dependency by pip (qt)"
         sudo pip3 install pyside6==$(qmake6 -query QT_VERSION)
         echo "::endgroup::"
 
