@@ -183,6 +183,16 @@ class EntityTreeWidgetTC(unittest.TestCase):
         tree.set_world(world)
         self.assertEqual(world.calls["diagnostics"], 2)
 
+    def test_poll_timer_runs_only_while_visible(self):
+        tree = EntityTreeWidget(_crossing_world())
+        self.assertEqual(tree._timer.interval(), tree._POLL_MS)
+        tree.show()
+        QApplication.processEvents()
+        self.assertTrue(tree._timer.isActive())
+        tree.hide()
+        QApplication.processEvents()
+        self.assertFalse(tree._timer.isActive())
+
 
 @unittest.skipIf(GITHUB_ACTIONS or not solvcon.HAS_PILOT,
                  "GUI is not available in GitHub Actions")
@@ -360,14 +370,6 @@ class TreePanelTC(unittest.TestCase):
         sections = _tree_sections(feature._mesh_tree._tree)
         self.assertEqual(sections["Counts"]["cell"], "1")
         self.assertEqual(sections["Cell types"]["triangle"], "1")
-
-    def test_poll_timer_runs_only_while_visible(self):
-        feature = self._panel_on()
-        self.assertEqual(feature._timer.interval(), feature._POLL_MS)
-        feature._on_visibility_changed(True)
-        self.assertTrue(feature._timer.isActive())
-        feature._on_visibility_changed(False)
-        self.assertFalse(feature._timer.isActive())
 
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

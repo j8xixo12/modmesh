@@ -25,11 +25,6 @@ class TreePanel(_gui_common.PilotFeature):
     used to be separate now share one widget.
     """
 
-    # Poll period in milliseconds while the panel is visible; the 2D canvas
-    # mutates its world in C++ without a change signal, so the shown tree is
-    # re-read on this cadence (an unchanged read is a no-op).
-    _POLL_MS = 500
-
     def __init__(self, *args, **kw):
         self._status = kw.pop('style_status')
         super().__init__(*args, **kw)
@@ -38,7 +33,6 @@ class TreePanel(_gui_common.PilotFeature):
         self._stack = None
         self._mesh_tree = None
         self._entity_tree = None
-        self._timer = None
 
     def populate_menu(self):
         self._action = self.add_action(
@@ -56,7 +50,7 @@ class TreePanel(_gui_common.PilotFeature):
             self._dock.hide()
 
     def _ensure_panel(self):
-        """Build the dock lazily; poll it and follow sub-window changes."""
+        """Build the dock lazily and follow sub-window activation."""
         if self._stack is not None:
             return
         self._mesh_tree = MeshInfoTree(self._status)
@@ -72,22 +66,9 @@ class TreePanel(_gui_common.PilotFeature):
         self._mgr.mainWindow.addDockWidget(Qt.LeftDockWidgetArea,
                                            self._dock)
         self._dock.visibilityChanged.connect(self._action.setChecked)
-        self._timer = QTimer(self)
-        self._timer.setInterval(self._POLL_MS)
-        self._timer.timeout.connect(self._sync)
-        self._dock.visibilityChanged.connect(self._on_visibility_changed)
         mdi = self._mdi_area()
         if mdi is not None:
             mdi.subWindowActivated.connect(self._on_subwindow_activated)
-
-    def _on_visibility_changed(self, visible):
-        """Run the poll timer only while the panel is on screen."""
-        if self._timer is None:
-            return
-        if visible:
-            self._timer.start()
-        else:
-            self._timer.stop()
 
     def _on_subwindow_activated(self, _subwin):
         """Re-select the tree when the active sub-window changes."""

@@ -6,6 +6,7 @@
 
 import json
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QHBoxLayout, QButtonGroup, QRadioButton,
                                QTreeWidgetItem)
 
@@ -21,6 +22,12 @@ class EntityTreeWidget(TreePanelBase):
 
     LEVELS = ("basic", "diagnostics")
 
+    # Poll period in milliseconds while the tree is on screen. The 2D canvas
+    # mutates its world in C++ without a change signal, so the tree re-reads
+    # the world it holds on this cadence; the describe_state cache makes an
+    # unchanged tick a no-op.
+    _POLL_MS = 500
+
     # A unique sentinel for "nothing rendered/fingerprinted yet", distinct
     # from the ``None`` key that marks the "No world loaded" render.
     _UNSET = object()
@@ -32,7 +39,20 @@ class EntityTreeWidget(TreePanelBase):
         self._fingerprint = self._UNSET
         self._cache = {}
         self._rendered_key = self._UNSET
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._POLL_MS)
+        self._timer.timeout.connect(self._render)
         self.set_world(world)
+
+    def showEvent(self, event):
+        """Poll the held world only while the tree is on screen."""
+        super().showEvent(event)
+        self._timer.start()
+
+    def hideEvent(self, event):
+        """Stop polling once the tree leaves the screen."""
+        super().hideEvent(event)
+        self._timer.stop()
 
     def _build_header(self, layout):
         """Add the basic/diagnostics level selector above the tree."""
