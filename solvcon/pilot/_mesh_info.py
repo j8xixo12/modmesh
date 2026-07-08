@@ -6,20 +6,19 @@
 
 import numpy as np
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QDockWidget, QTreeWidgetItem
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QTreeWidgetItem
 
 from .. import core
-from . import _gui_common
 from . import _mesh
-from . import _tree_panel
+from ._tree_panel import TreePanelBase
 
 __all__ = [  # noqa: F822
-    'MeshInfo',
+    'MeshInfoTree',
 ]
 
 
-class MeshInfoTree(_tree_panel.TreePanelBase):
+class MeshInfoTree(TreePanelBase):
     """Widget that presents the mesh information tree inside the dock.
 
     :ivar boundary_toggled:
@@ -207,99 +206,5 @@ class MeshInfoTree(_tree_panel.TreePanelBase):
         elif kind == 'normals' and self.normals_toggled is not None:
             self.normals_toggled(checked)
 
-
-class MeshInfo(_gui_common.PilotFeature):
-    """Mesh information panel, toggled from the View "Panels" submenu.
-
-    The toggle item is placed under the "View/Panels" path. When on, the
-    panel shows the active sub-window's mesh and follows the active
-    sub-window; sub-windows without a mesh show "No mesh loaded".
-    """
-
-    def __init__(self, *args, **kw):
-        self._status = kw.pop('style_status')
-        super().__init__(*args, **kw)
-        self._action = None
-        self._dock = None
-        self._panel = None
-
-    def populate_menu(self):
-        self._action = self.add_action(
-            "View/Panels", "Mesh", "Toggle the mesh information panel", None,
-            id="panel.mesh_info", weight=10, checkable=True)
-        self._action.toggled.connect(self._on_toggled)
-
-    def _on_toggled(self, checked):
-        """Show or hide the panel."""
-        if checked:
-            self._ensure_panel()
-            self._refresh()
-            self._dock.show()
-        elif self._dock is not None:
-            self._dock.hide()
-
-    def _ensure_panel(self):
-        """Build the dock lazily and follow sub-window activation."""
-        if self._panel is not None:
-            return
-        self._panel = MeshInfoTree(self._status)
-        self._panel.boundary_toggled = self._on_boundary_toggled
-        self._panel.edges_toggled = self._on_edges_toggled
-        self._panel.normals_toggled = self._on_normals_toggled
-        self._dock = QDockWidget("mesh")
-        self._dock.setWidget(self._panel)
-        self._mgr.mainWindow.addDockWidget(Qt.LeftDockWidgetArea,
-                                           self._dock)
-        # Keep the menu check in sync when the dock is closed by its button.
-        self._dock.visibilityChanged.connect(self._action.setChecked)
-        mdi = self._mdi_area()
-        if mdi is not None:
-            mdi.subWindowActivated.connect(self._on_subwindow_activated)
-
-    def _on_subwindow_activated(self, _subwin):
-        """Refresh the panel when the active sub-window changes.
-
-        The refresh is deferred to the next event-loop pass because loading
-        a mesh from a menu activates the new sub-window before ``updateMesh``
-        populates it.
-        """
-        if self._dock is not None and self._action.isChecked():
-            QTimer.singleShot(0, self._refresh)
-
-    def _refresh(self):
-        """Show the active sub-window's mesh. The style boxes read the shared
-        status, so rebuilding the tree already reflects the active viewer."""
-        self._panel.set_mesh(self._active_mesh())
-
-    def _on_boundary_toggled(self, ibc, checked):
-        """Highlight or clear boundary set ``ibc`` in the active viewer."""
-        widget = self._mgr.currentR3DWidget()
-        if widget is not None:
-            widget.showBoundary(ibc, checked)
-
-    def _on_edges_toggled(self, checked):
-        """Show or hide the feature-edge overlay in the active viewer."""
-        widget = self._mgr.currentR3DWidget()
-        if widget is not None:
-            widget.showFeatureEdges(checked)
-
-    def _on_normals_toggled(self, checked):
-        """Show or hide the face-normal arrows in the active viewer."""
-        widget = self._mgr.currentR3DWidget()
-        if widget is not None:
-            widget.showNormals(checked)
-
-    def _mdi_area(self):
-        return self._mainWindow.centralWidget()
-
-    def _active_mesh(self):
-        """Return the active 3D viewer's mesh, or ``None``.
-
-        ``RManager.currentR3DWidget`` is used so the pybind11 widget that
-        exposes ``mesh`` is reached; ``QMdiSubWindow.widget()`` would return
-        a bare ``QWidget``.
-        """
-        widget = self._mgr.currentR3DWidget()
-        return None if widget is None else widget.mesh
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
