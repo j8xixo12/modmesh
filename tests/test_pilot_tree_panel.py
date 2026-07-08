@@ -9,10 +9,7 @@ import solvcon
 
 try:
     from solvcon import pilot
-    from solvcon.pilot import _mesh
-    from solvcon.pilot._mesh_info import MeshInfoTree
-    from solvcon.pilot._entity_tree import EntityTreeWidget
-    from solvcon.pilot._tree_panel import TreePanel
+    from solvcon.pilot import _mesh, _mesh_info, _entity_tree, _tree_panel
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 except ImportError:
@@ -22,15 +19,16 @@ GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS', False)
 
 
 def _make_sample_mesh():
-    """Two triangles and one quadrilateral; ``build_ghost`` adds ghost cells
+    """
+    Two triangles and one quadrilateral; ``build_ghost`` adds ghost cells
     and nodes whose presence the panel must not count.
     """
     core = solvcon.core
-    tri = core.StaticMesh.TRIANGLE
-    quad = core.StaticMesh.QUADRILATERAL
+    T = core.StaticMesh.TRIANGLE
+    Q = core.StaticMesh.QUADRILATERAL
     mh = core.StaticMesh(ndim=2, nnode=6, nface=0, ncell=3)
     mh.ndcrd.ndarray[:, :] = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 0), (2, 1)]
-    mh.cltpn.ndarray[:] = [tri, tri, quad]
+    mh.cltpn.ndarray[:] = [T, T, Q]
     mh.clnds.ndarray[:, :5] = [(3, 0, 3, 2, -1), (3, 0, 1, 3, -1),
                                (4, 1, 4, 5, 3)]
     mh.build_interior()
@@ -65,26 +63,24 @@ def _crossing_world():
 
 
 def _section_map(sections):
-    """Map each ``(section, rows)`` group to its ``{property: value}`` dict."""
+    """Map each section name to its ``{property: value}`` dict.
+
+    Counts and Ghost share property names (node, face, cell), so the rows
+    cannot be flattened into one namespace.
+    """
     return {name: dict(rows) for name, rows in sections}
 
 
 def _tree_sections(tree):
-    """Map each group under the tree root to ``{property: value}``.
-
-    Rows shaped ``"property: value"`` split into pairs; leaf toggle rows with
-    no colon contribute nothing.
-    """
+    """Map each group under the mesh tree root to ``{property: value}``."""
     result = {}
     root = tree.topLevelItem(0)
     for i in range(root.childCount()):
         group = root.child(i)
         pairs = {}
         for j in range(group.childCount()):
-            text = group.child(j).text(0)
-            if ": " in text:
-                prop, value = text.split(": ", 1)
-                pairs[prop] = value
+            prop, value = group.child(j).text(0).split(": ", 1)
+            pairs[prop] = value
         result[group.text(0)] = pairs
     return result
 
@@ -104,9 +100,8 @@ def _all_item_texts(tree):
 
 
 class _CountingWorld:
-    """Wrap a real world, counting ``describe_state`` calls per level so a
-    test can assert the panel caches instead of resweeping on every poll.
-    """
+    """Wraps a real world, counting describe_state calls per level so a test
+    can assert the panel caches instead of resweeping on every poll."""
 
     def __init__(self, real):
         self._real = real
@@ -120,7 +115,8 @@ class _CountingWorld:
 @unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
 class MakeMeshInfoTC(unittest.TestCase):
     def test_excludes_ghost_entities(self):
-        info = _section_map(MeshInfoTree.make_mesh_info(_make_sample_mesh()))
+        info = _section_map(
+            _mesh_info.MeshInfoTree.make_mesh_info(_make_sample_mesh()))
         self.assertEqual(info["Counts"]["dim"], "2")
         self.assertEqual(info["Counts"]["node"], "6")
         self.assertEqual(info["Counts"]["cell"], "3")
@@ -133,7 +129,7 @@ class MakeMeshInfoTC(unittest.TestCase):
 
     def test_boundary_info_groups_every_face(self):
         mh = _make_sample_mesh()
-        binfo = MeshInfoTree.make_boundary_info(mh)
+        binfo = _mesh_info.MeshInfoTree.make_boundary_info(mh)
         # With no add_bc, build_boundary gathers every boundary face into a
         # single catch-all set, so the one row must report all of them.
         self.assertGreater(mh.nbound, 0)
@@ -145,14 +141,17 @@ class MakeMeshInfoTC(unittest.TestCase):
 class MeshInfoTreeTC(unittest.TestCase):
     def setUp(self):
         self.mgr = pilot.RManager.instance.setUp()
-        # The View menu and the tree share one MeshStyleStatus.
+        # The View menu and the panel share one MeshStyleStatus.
         self.status = _mesh.MeshStyleStatus(mgr=self.mgr)
 
-    def test_holds_shared_style_status(self):
+    def test_tree_holds_shared_style_status(self):
         # MeshInfoTree keeps the injected MeshStyleStatus as a public
         # attribute and reads its style rows from it, rather than owning a
         # status of its own.
-        tree = MeshInfoTree(style_status=self.status, mh=_make_sample_mesh())
+        widget = self.mgr.add3DWidget()
+        widget.updateMesh(_make_sample_mesh())
+        tree = _mesh_info.MeshInfoTree(style_status=self.status,
+                                       mh=_make_sample_mesh())
         self.assertIs(tree.style_status, self.status)
         self.assertEqual(tree._style_items["wireframe"].checkState(0),
                          Qt.Checked)
@@ -165,7 +164,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
         self.mgr = pilot.RManager.instance.setUp()
 
     def test_level_selector_gates_diagnostics(self):
-        tree = EntityTreeWidget(_crossing_world())
+        tree = _entity_tree.EntityTreeWidget(_crossing_world())
         self.assertIn("Diagnostics", _all_item_texts(tree._tree))
         tree._levels["basic"].setChecked(True)
         texts = _all_item_texts(tree._tree)
@@ -175,7 +174,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
     def test_diagnostics_cached_until_world_changes(self):
         real = _crossing_world()
         world = _CountingWorld(real)
-        tree = EntityTreeWidget()
+        tree = _entity_tree.EntityTreeWidget()
         tree.set_world(world)
         tree.set_world(world)  # unchanged poll reuses the cache
         self.assertEqual(world.calls["diagnostics"], 1)
@@ -184,7 +183,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
         self.assertEqual(world.calls["diagnostics"], 2)
 
     def test_poll_timer_runs_only_while_visible(self):
-        tree = EntityTreeWidget(_crossing_world())
+        tree = _entity_tree.EntityTreeWidget(_crossing_world())
         self.assertEqual(tree._timer.interval(), tree._POLL_MS)
         tree.show()
         QApplication.processEvents()
@@ -202,7 +201,8 @@ class TreePanelTC(unittest.TestCase):
         self.status = _mesh.MeshStyleStatus(mgr=self.mgr)
 
     def _panel_on(self):
-        feature = TreePanel(mgr=self.mgr, style_status=self.status)
+        feature = _tree_panel.TreePanel(
+            mgr=self.mgr, style_status=self.status)
         feature.populate_menu()
         feature._action.setChecked(True)
         return feature
