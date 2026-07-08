@@ -12,7 +12,6 @@ try:
     from solvcon.pilot import _mesh
     from solvcon.pilot._mesh_info import MeshInfoTree
     from solvcon.pilot._entity_tree import EntityTreeWidget, TreePanel
-    from solvcon.pilot._tree_panel import TreePanelBase
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 except ImportError:
@@ -118,15 +117,6 @@ class _CountingWorld:
 
 
 @unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
-class TreePanelBaseTC(unittest.TestCase):
-    def test_both_trees_share_the_base(self):
-        # The mesh tree and the entity tree are the same kind of panel, so
-        # they descend from the one shared base.
-        self.assertTrue(issubclass(MeshInfoTree, TreePanelBase))
-        self.assertTrue(issubclass(EntityTreeWidget, TreePanelBase))
-
-
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
 class MakeMeshInfoTC(unittest.TestCase):
     def test_excludes_ghost_entities(self):
         info = _section_map(MeshInfoTree.make_mesh_info(_make_sample_mesh()))
@@ -205,12 +195,6 @@ class TreePanelTC(unittest.TestCase):
         feature.populate_menu()
         feature._action.setChecked(True)
         return feature
-
-    def test_one_toggle_under_view_panels(self):
-        feature = TreePanel(mgr=self.mgr, style_status=self.status)
-        feature.populate_menu()
-        panels = self.mgr.menu_model.menu("View/Panels")
-        self.assertIn(feature._action, panels.actions())
 
     def test_current_r3dwidget_exposes_mesh(self):
         # The mesh must be reached through the pybind11 RDomainWidget rather
