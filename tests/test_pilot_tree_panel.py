@@ -11,7 +11,8 @@ try:
     from solvcon import pilot
     from solvcon.pilot import _mesh
     from solvcon.pilot._mesh_info import MeshInfoTree
-    from solvcon.pilot._entity_tree import EntityTreeWidget, TreePanel
+    from solvcon.pilot._entity_tree import EntityTreeWidget
+    from solvcon.pilot._tree_panel import TreePanel
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 except ImportError:

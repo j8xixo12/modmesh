@@ -2,7 +2,7 @@
 # BSD 3-Clause License, see COPYING
 
 
-"""Dock panel showing StaticMesh geometry counts in a foldable tree."""
+"""Tree widget showing StaticMesh geometry counts in a foldable tree."""
 
 import numpy as np
 
@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QTreeWidgetItem
 
 from .. import core
 from . import _mesh
-from ._tree_panel import TreePanelBase
+from ._tree_panel_base import TreePanelBase
 
 __all__ = [  # noqa: F822
     'MeshInfoTree',
