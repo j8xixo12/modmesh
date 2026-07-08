@@ -3,7 +3,7 @@
 solvcon is a modularized code implementing [the space-time conservation element
 and solution element (CESE)
 method](https://yyc.solvcon.net/en/latest/cese/index.html) based on
-unstructured meshes of mixed element to solve conservation laws. It is
+unstructured meshes of mixed elements to solve conservation laws. It is
 developed by using C++ and Python to provide:
 
 1. Contiguous buffers and multi-dimensional arrays.
