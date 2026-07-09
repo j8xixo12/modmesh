@@ -9,7 +9,7 @@ import solvcon
 
 try:
     from solvcon import pilot
-    from solvcon.pilot import _mesh, _mesh_info, _entity_tree, _tree_panel
+    from solvcon.pilot import _mesh, _tree_panel
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 except ImportError:
@@ -116,7 +116,7 @@ class _CountingWorld:
 class MakeMeshInfoTC(unittest.TestCase):
     def test_excludes_ghost_entities(self):
         info = _section_map(
-            _mesh_info.MeshInfoTree.make_mesh_info(_make_sample_mesh()))
+            _tree_panel.MeshInfoTree.make_mesh_info(_make_sample_mesh()))
         self.assertEqual(info["Counts"]["dim"], "2")
         self.assertEqual(info["Counts"]["node"], "6")
         self.assertEqual(info["Counts"]["cell"], "3")
@@ -129,7 +129,7 @@ class MakeMeshInfoTC(unittest.TestCase):
 
     def test_boundary_info_groups_every_face(self):
         mh = _make_sample_mesh()
-        binfo = _mesh_info.MeshInfoTree.make_boundary_info(mh)
+        binfo = _tree_panel.MeshInfoTree.make_boundary_info(mh)
         # With no add_bc, build_boundary gathers every boundary face into a
         # single catch-all set, so the one row must report all of them.
         self.assertGreater(mh.nbound, 0)
@@ -150,8 +150,8 @@ class MeshInfoTreeTC(unittest.TestCase):
         # status of its own.
         widget = self.mgr.add3DWidget()
         widget.updateMesh(_make_sample_mesh())
-        tree = _mesh_info.MeshInfoTree(style_status=self.status,
-                                       mh=_make_sample_mesh())
+        tree = _tree_panel.MeshInfoTree(style_status=self.status,
+                                        mh=_make_sample_mesh())
         self.assertIs(tree.style_status, self.status)
         self.assertEqual(tree._style_items["wireframe"].checkState(0),
                          Qt.Checked)
@@ -164,7 +164,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
         self.mgr = pilot.RManager.instance.setUp()
 
     def test_level_selector_gates_diagnostics(self):
-        tree = _entity_tree.EntityTreeWidget(_crossing_world())
+        tree = _tree_panel.EntityTreeWidget(_crossing_world())
         self.assertIn("Diagnostics", _all_item_texts(tree._tree))
         tree._levels["basic"].setChecked(True)
         texts = _all_item_texts(tree._tree)
@@ -174,7 +174,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
     def test_diagnostics_cached_until_world_changes(self):
         real = _crossing_world()
         world = _CountingWorld(real)
-        tree = _entity_tree.EntityTreeWidget()
+        tree = _tree_panel.EntityTreeWidget()
         tree.set_world(world)
         tree.set_world(world)  # unchanged poll reuses the cache
         self.assertEqual(world.calls["diagnostics"], 1)
@@ -183,7 +183,7 @@ class EntityTreeWidgetTC(unittest.TestCase):
         self.assertEqual(world.calls["diagnostics"], 2)
 
     def test_poll_timer_runs_only_while_visible(self):
-        tree = _entity_tree.EntityTreeWidget(_crossing_world())
+        tree = _tree_panel.EntityTreeWidget(_crossing_world())
         self.assertEqual(tree._timer.interval(), tree._POLL_MS)
         tree.show()
         QApplication.processEvents()
