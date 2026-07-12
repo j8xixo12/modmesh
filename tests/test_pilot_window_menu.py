@@ -60,6 +60,12 @@ class WindowMenuTC(unittest.TestCase):
         self._show()
         self.assertEqual(self._items(), [])
 
+    def test_menu_is_never_empty(self):
+        # A native menu bar hides an empty menu, and a hidden menu can
+        # never fire aboutToShow to fill itself, so the list must be
+        # seeded without waiting for the first show.
+        self.assertFalse(self.model.menu("Window").isEmpty())
+
     def test_single_window_is_listed(self):
         self.mgr.add2DWidget()
         self._show()

@@ -35,14 +35,16 @@ class WindowManager(_gui_common.PilotFeature):
         self._items = []
 
     def populate_menu(self):
-        """Anchor the dynamic list under the existing "Window" menu.
+        """Anchor the dynamic list on the "Window" menu.
 
-        A separator keeps the sub-window list below the static "Console"
-        item (placed at weight 50); the list is filled lazily on show.
+        The menu holds nothing static (panel toggles live under
+        View/Panels), so the list is seeded right away: a native menu
+        bar hides an empty menu, and a hidden menu can never fire
+        aboutToShow to fill itself.
         """
         self._menu = self._mgr.menu_model.menu("Window")
-        self._mgr.menu_model.place_separator("Window", weight=60)
         self._menu.aboutToShow.connect(self._rebuild)
+        self._rebuild()
 
     def _rebuild(self):
         """Refresh the sub-window list to match the MDI area.

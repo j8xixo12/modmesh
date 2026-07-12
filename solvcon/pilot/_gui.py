@@ -175,12 +175,12 @@ class _Controller(metaclass=_Singleton):
                 menu_role=QAction.MenuRole.QuitRole),
             100)
         wm.menu_model.place(
-            "Window",
+            "View/Panels",
             _gui_common.build_action(
                 wm.mainWindow, "Console", "Open / Close Console",
-                wm.toggleConsole, id="window.console",
+                wm.toggleConsole, id="panel.console",
                 checkable=True, checked=True),
-            50)
+            30)
 
 
 controller = _Controller()
