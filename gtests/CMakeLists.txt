@@ -40,10 +40,14 @@ add_executable(
     test_nopython_pilot_syntax.cpp
     test_nopython_pilot_theme.cpp
     test_nopython_pilot_keymap.cpp
+    test_nopython_pilot_plot.cpp
     ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/console/RPythonConsoleHistory.cpp
     ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/console/RPythonSyntaxRules.cpp
     ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/theme/theme.cpp
     ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/app/keymap.cpp
+    ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/plot/plot_style.cpp
+    ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/plot/RPlotSeries.cpp
+    ${SOLVCON_INCLUDE_DIR}/solvcon/pilot/plot/RPlotModel.cpp
     ${SOLVCON_TOGGLE_SOURCES}
     ${SOLVCON_PROFILING_SOURCES}
     ${SOLVCON_BUFFER_SOURCES}

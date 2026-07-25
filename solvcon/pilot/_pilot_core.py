@@ -53,6 +53,17 @@ list_of_drawtool = [
     'default_draw_tool_name',
 ]
 
+# plot/ (plot_style.hpp/.cpp, RPlotSeries.hpp/.cpp, RPlotModel.hpp/.cpp)
+list_of_rplot = [
+    'PlotColor',
+    'RPlotSeries',
+    'RPlotView',
+    'RPlotModel',
+    'plot_color_cycle',
+    'plot_cycle_color',
+    'plot_nonsingular_range',
+]
+
 
 _from_impl = (  # noqa: F822
     list_of_rdomainwidget +
@@ -60,7 +71,8 @@ _from_impl = (  # noqa: F822
     list_of_rmanager +
     list_of_rpythonconsole +
     list_of_rpythonterminal +
-    list_of_drawtool
+    list_of_drawtool +
+    list_of_rplot
 )
 
 __all__ = _from_impl + [  # noqa: F822
@@ -83,6 +95,7 @@ _load(list_of_rmanager)
 _load(list_of_rpythonconsole)
 _load(list_of_rpythonterminal)
 _load(list_of_drawtool)
+_load(list_of_rplot)
 
 del _load
 
