@@ -19,6 +19,9 @@ from ._pilot_core import (  # noqa: F401
     RPythonConsoleDockWidget,
     RPythonTerminalDockWidget,
     RManager,
+    PlotColor,
+    plot_color_cycle,
+    plot_cycle_color,
 )
 if enable:
     from .base._gui import (  # noqa: F401
