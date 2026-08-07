@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -54,6 +55,12 @@ public:
 
     std::optional<std::array<double, 4>> data_limits() const;
 
+    /**
+     * Monotonic data version, bumped by every set_data and clear_data, so a
+     * consumer (a decimation, a derived limit) can key its cache off it.
+     */
+    std::uint64_t revision() const { return m_revision; }
+
     std::string const & label() const { return m_label; }
     void set_label(std::string label) { m_label = std::move(label); }
 
@@ -75,6 +82,7 @@ private:
 
     SimpleCollector<double> m_x;
     SimpleCollector<double> m_y;
+    std::uint64_t m_revision = 0;
     std::string m_label;
     PlotColor m_color;
     bool m_color_is_set = false;

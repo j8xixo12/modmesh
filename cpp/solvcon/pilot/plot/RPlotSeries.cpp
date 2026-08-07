@@ -56,6 +56,7 @@ void RPlotSeries::set_data(SimpleArray<double> const & x, SimpleArray<double> co
 
     m_x = SimpleCollector<double>(x);
     m_y = SimpleCollector<double>(y);
+    ++m_revision;
     m_limits_stale = true;
 }
 
@@ -63,6 +64,7 @@ void RPlotSeries::clear_data()
 {
     m_x = SimpleCollector<double>();
     m_y = SimpleCollector<double>();
+    ++m_revision;
     m_limits_stale = true;
 }
 
