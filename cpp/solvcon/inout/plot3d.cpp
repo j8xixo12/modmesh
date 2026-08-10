@@ -27,6 +27,7 @@ Plot3d::Plot3d(const std::string & data)
     m_y_shape.remake(small_vector<ssize_t>{static_cast<ssize_t>(nblocks)}, 0);
     m_z_shape.remake(small_vector<ssize_t>{static_cast<ssize_t>(nblocks)}, 0);
     m_blk_sizes.remake(small_vector<ssize_t>{static_cast<ssize_t>(nblocks)}, 0);
+    m_blk_offsets.remake(small_vector<ssize_t>{static_cast<ssize_t>(nblocks)}, 0);
 
     // parsing xyz dimension of each block
     for (auto i = 0; i < nblocks; ++i)
@@ -37,6 +38,7 @@ Plot3d::Plot3d(const std::string & data)
         m_y_shape(i) = std::stoul(tokens[1]);
         m_z_shape(i) = std::stoul(tokens[2]);
         m_blk_sizes(i) = m_x_shape(i) * m_y_shape(i) * m_z_shape(i);
+        m_blk_offsets(i) = static_cast<uint_type>(total_blk_size);
         total_blk_size += m_blk_sizes(i);
     }
 
