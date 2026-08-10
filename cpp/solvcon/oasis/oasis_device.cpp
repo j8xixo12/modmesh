@@ -5,6 +5,8 @@
 
 #include <solvcon/oasis/oasis_device.hpp>
 #include <cstdint>
+#include <format>
+#include <stdexcept>
 #include <utility>
 
 namespace solvcon
@@ -101,6 +103,22 @@ std::vector<uint8_t> OasisRecordPoly::to_bytes() const
     // Polygon record should be
     // '21' 00PXYRDL [layer-num] [datatype-num] [point-list] [x] [y] [rep]
     // Please refer OASIS Draft section 26.
+    if (m_vertices.size() < 2)
+    {
+        throw std::invalid_argument(
+            std::format("OasisRecordPoly::to_bytes: needs at least 2 vertices, but there are {}", m_vertices.size()));
+    }
+    for (size_t i = 0; i + 1 < m_vertices.size(); ++i)
+    {
+        if (m_vertices[i].first != m_vertices[i + 1].first && m_vertices[i].second != m_vertices[i + 1].second)
+        {
+            throw std::invalid_argument(
+                std::format(
+                    "OasisRecordPoly::to_bytes: segment {} is diagonal, but the 1-delta point list is Manhattan-only",
+                    i));
+        }
+    }
+
     std::vector<uint8_t> segment;
 
     segment.push_back(0x15);
@@ -124,17 +142,21 @@ std::vector<uint8_t> OasisRecordPoly::to_bytes() const
     // The 1-Delta have two different type:
     //  - Type 0: Start with horizontal
     //  - Type 1: Start with vertical
+    // Every segment is Manhattan by the check above, so a first segment
+    // that is not horizontal is vertical.
     if (m_vertices[0].second == m_vertices[1].second)
     {
         segment.push_back(0x00);
     }
-    else if (m_vertices[0].first == m_vertices[0].first)
+    else
     {
         segment.push_back(0x01);
     }
 
-    // The vertex count shoud be (vertex - 1)
-    segment.push_back(m_vertices.size() - 1);
+    // The vertex count should be (vertex - 1), encoded as an OASIS
+    // unsigned integer: a raw byte would misparse from 128 up and wrap
+    // beyond 255.
+    OasisDevice::append_unsigned_integer(segment, static_cast<int>(m_vertices.size() - 1));
 
     // In this implementation, point-list only support 1-delta format.
     // Please refer Point-list in OASIS draft 7.7.

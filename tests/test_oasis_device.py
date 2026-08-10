@@ -45,6 +45,29 @@ class OasisRecordPolyTC(unittest.TestCase):
 
         self.assertEqual(record_bytes, list(map(ord, expected_record_bytes)))
 
+    def test_short_vertex_list_is_rejected(self):
+        for vertices in ([], [[0, 0]]):
+            with self.assertRaisesRegex(ValueError, 'at least 2 vertices'):
+                solvcon.OasisRecordPoly(vertices).to_bytes()
+
+    def test_diagonal_segment_is_rejected(self):
+        # The 1-delta point list cannot represent a diagonal, wherever it
+        # sits: as the first segment or after Manhattan ones.
+        for vertices in ([[0, 0], [10, 10], [10, 0]],
+                         [[0, 0], [10, 0], [20, 10]]):
+            with self.assertRaisesRegex(ValueError, 'Manhattan'):
+                solvcon.OasisRecordPoly(vertices).to_bytes()
+
+    def test_long_vertex_count_is_a_variable_length_integer(self):
+        # 258 vertices give the count 257, which must span the two bytes
+        # 0x81 0x02 instead of wrapping in a single raw byte.
+        vertices = [[0, 0]]
+        for it in range(257):
+            x, y = vertices[-1]
+            vertices.append([x + 1, y] if it % 2 == 0 else [x, y + 1])
+        record_bytes = solvcon.OasisRecordPoly(vertices).to_bytes()
+        self.assertEqual([0x00, 0x81, 0x02], record_bytes[4:7])
+
 
 # For OASIS format, refer solvcon::OasisDevice comment in oasis_device.cpp
 class OasisDeviceTC(unittest.TestCase):
