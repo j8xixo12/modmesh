@@ -9,6 +9,7 @@ than in the window lane: a `SolutionPanel` and a coarse session are all it
 takes to fill the readout boxes and read the cells back.
 """
 
+import os
 import unittest
 
 import solvcon
@@ -183,6 +184,48 @@ class StatusReadoutTC(unittest.TestCase):
         panel, _, vmin, vmax = self._filled()
         self.assertEqual(_panel._number(vmin), panel._field._min.text())
         self.assertEqual(_panel._number(vmax), panel._field._max.text())
+
+    def test_the_field_box_says_where_the_legend_stands(self):
+        # The legend itself is drawn in the domain sub-window; this box
+        # only carries the choice of edge, and reports it to its owner.
+        panel = SolutionPanel()
+        self.assertEqual(_panel.FieldBox.PLACEMENT, panel.bar_placement())
+        moved = []
+        panel.placement_changed = moved.append
+        panel._field._placement.setCurrentText('lower')
+        self.assertEqual(['lower'], moved)
+        self.assertEqual('lower', panel.bar_placement())
+        # Every edge the viewer knows about is on offer, "off" included.
+        self.assertEqual(list(_panel.FieldBox.PLACEMENTS),
+                         [panel._field._placement.itemText(it)
+                          for it in range(panel._field._placement.count())])
+
+    def test_the_movie_box_resolves_where_the_movie_goes(self):
+        # A relative path lands next to whatever the pilot was launched
+        # from, which for a pilot started from the desktop is not the
+        # checkout, so the box resolves both its default and what is typed
+        # into it and names the movie's real destination.
+        panel = SolutionPanel()
+        self.assertTrue(os.path.isabs(panel._movie._path.text()))
+        self.assertEqual(os.path.abspath('tmp/obrefl_unstructured.webp'),
+                         panel.movie_path('unstructured'))
+        panel._movie._path.setText('movie.gif')
+        self.assertEqual(os.path.abspath('movie.gif'),
+                         panel.movie_path('quad'))
+
+    def test_the_movie_box_reports_a_ticked_box_but_not_a_set_one(self):
+        # The controller sets the box back when a recording drops under it,
+        # and a set that reported itself would send the controller round
+        # again to stop what it has already stopped.
+        panel = SolutionPanel()
+        fired = []
+        panel.record_toggled = fired.append
+        panel._movie._record.setChecked(True)
+        self.assertEqual([True], fired)
+        self.assertTrue(panel.recording())
+        panel.set_recording(False)
+        self.assertEqual([True], fired)
+        self.assertFalse(panel.recording())
 
     def test_the_zone_rows_carry_the_computed_analytic_and_error(self):
         panel, _, _, _ = self._filled()
