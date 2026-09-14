@@ -75,6 +75,11 @@ list_of_rplotmodel = [
     'RPlotModel',
 ]
 
+# RPlotTicker.hpp/.cpp
+list_of_rplotticker = [
+    'RPlotTicker',
+]
+
 
 _from_impl = (  # noqa: F822
     list_of_rdomainwidget +
@@ -86,7 +91,8 @@ _from_impl = (  # noqa: F822
     list_of_plotlimits +
     list_of_plot_style +
     list_of_rplotseries +
-    list_of_rplotmodel
+    list_of_rplotmodel +
+    list_of_rplotticker
 )
 
 __all__ = _from_impl + [  # noqa: F822
@@ -113,6 +119,7 @@ _load(list_of_plotlimits)
 _load(list_of_plot_style)
 _load(list_of_rplotseries)
 _load(list_of_rplotmodel)
+_load(list_of_rplotticker)
 
 del _load
 
