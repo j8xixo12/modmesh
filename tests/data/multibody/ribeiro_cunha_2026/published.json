@@ -1,0 +1,65 @@
+{
+  "source": "J. G. Telles Ribeiro and A. Cunha Jr, 'Scenario-driven optimization of passive vehicle suspensions: explaining the effectiveness of asymmetric damping', arXiv:2605.05235v1 (2026). Light vehicle of Table 2: ms 250 kg, mu 40 kg, kt 200000 N/m; fn 1.5 Hz, symmetric damping ratio 0.3 (Eqs. 14-15); ISO 8608 road (Table 1, Eq. 11, band 0.011 < n < 2.83 cycles/m) generated with a_i = sqrt(G_d(n_i) dn) (Eq. 13, half the ISO variance); v = 40 m/s; tire without tension (Eq. 8). Rft = sigma_Ft / ((ms + mu) g), Eq. 17.",
+  "vehicle": {
+    "ms": 250.0,
+    "mu": 40.0,
+    "kt": 200000.0,
+    "fn": 1.5,
+    "zeta": 0.3,
+    "speed": 40.0,
+    "road_length": 1000.0
+  },
+  "tire_load_ratio": {
+    "B": 0.15,
+    "C": 0.3,
+    "D": 0.53,
+    "note": "Section 3.2, Fig. 5 text: B 0.15 (no lift-off), C 0.30, D 0.53 (frequent lift-off)"
+  },
+  "minimum_tire_load_ratio": {
+    "B": 0.14,
+    "C": 0.26,
+    "note": "Section 4: the Rft-optimal designs at fn 1.5 Hz (B: 0.140 with sigma_aw 0.688 m/s^2; C: about 0.26 with sigma_aw 1.33 m/s^2). The paper optimizes bump and rebound damping separately."
+  },
+  "comfort_scale": [
+    [
+      0.0,
+      0.315,
+      "not uncomfortable"
+    ],
+    [
+      0.315,
+      0.63,
+      "a little uncomfortable"
+    ],
+    [
+      0.5,
+      1.0,
+      "fairly uncomfortable"
+    ],
+    [
+      0.8,
+      1.6,
+      "uncomfortable"
+    ],
+    [
+      1.25,
+      2.5,
+      "very uncomfortable"
+    ],
+    [
+      2.0,
+      null,
+      "extremely uncomfortable"
+    ]
+  ],
+  "iso_8608_gd_n0_1e-6_m3": {
+    "A": 16,
+    "B": 64,
+    "C": 256,
+    "D": 1024,
+    "E": 4096,
+    "F": 16384,
+    "G": 65536,
+    "H": 262144
+  }
+}
