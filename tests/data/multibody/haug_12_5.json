@@ -1,0 +1,174 @@
+{
+  "book": "Haug, Computer-Aided Kinematics and Dynamics of Mechanical Systems, Vol. I (1989)",
+  "section": "12.5 Dynamics of a Vehicle",
+  "pages": "468-481 (PDF ref/Haug/Chapter12.pdf pages 14-27)",
+  "extraction": "Tables read twice: once from the PDF page images, once from 220 dpi crops of the same pages. Every value below matched on both reads. Figures digitized from 300 dpi renders by pixel scan of the plot columns; axis calibration from the tick marks.",
+  "units": "SI (m, kg, s, N). Global z up; the car drives along +y; x > 0 is the side of wheels 2 and 4.",
+  "gravity": {
+    "value": null,
+    "note": "Section 12.5 does not print g. examples/haug/vehicle.py uses 9.8 m/s^2, the value that reproduces the Section 12.6 steady state."
+  },
+  "bodies": {
+    "source": "Table 12.5.1, p. 470. Products of inertia are zero (p. 469).",
+    "columns": ["mass", "Ixx", "Iyy", "Izz"],
+    "1_chassis": [1247.5, 1240.1, 209.6, 139.9],
+    "2_wheel_FR": [37.6, 1.0, 0.5, 1.0],
+    "3_wheel_FL": [37.6, 1.0, 0.5, 1.0],
+    "4_wheel_RR": [43.0, 0.67, 1.5, 1.2],
+    "5_wheel_RL": [43.0, 0.67, 1.5, 1.2],
+    "6_rack": [0.1, 0.01, 0.01, 0.01],
+    "7_stabilizer_F": [1.0, 0.1, 0.01, 0.01],
+    "8_stabilizer_R": [1.0, 0.1, 0.01, 0.01]
+  },
+  "models": {
+    "source": "p. 469 and p. 471",
+    "model_1": "bodies 1-6",
+    "model_2": "bodies 1-8 (adds roll-stabilizing bars 7 and 8)",
+    "model_2_count": {"nc": 56, "nh": 44, "dof": 12, "page": 471},
+    "model_1_dof_derived": 10,
+    "model_1_dof_note": "Not printed. Model 2 minus two bodies (14 coordinates) and two revolute joints plus two normalization rows (12 rows)."
+  },
+  "joints": {
+    "format": "Each point is body-fixed (x', y', z'). The joint axis of a body is Q - P. R fixes the third axis and does not enter the constraints of these joint types.",
+    "revolute_spherical": {
+      "source": "Table 12.5.2, p. 471",
+      "A-B": {
+        "body_i": 1, "P_i": [0.33, 1.1735, -0.3923], "Q_i": [0.322, 0.8675, -0.3893], "R_i": [0.33, 1.1735, 0.0],
+        "body_j": 2, "P_j": [0.0507, 0.0321, -0.2044], "Q_j": [0.0507, 0.0321, 1.0], "R_j": [0.0507, 1.0, -0.2044],
+        "distance": 0.203
+      },
+      "E-F": {
+        "body_i": 1, "P_i": [-0.33, 1.1735, -0.3923], "Q_i": [-0.322, 0.8675, -0.3893], "R_i": [-0.33, 1.1175, 0.0],
+        "body_j": 3, "P_j": [-0.0507, 0.0321, -0.2044], "Q_j": [-0.0507, 0.0321, 1.0], "R_j": [-0.0507, 1.0, -0.2044],
+        "distance": 0.203,
+        "note": "R_i y' is printed 1.1175 (A-B prints 1.1735). R does not enter the constraint."
+      }
+    },
+    "strut": {
+      "source": "Table 12.5.3, p. 472",
+      "B-C": {
+        "body_i": 1, "P_i": [0.5011, 1.1162, 0.1998], "Q_i": [0.5011, 1.1162, 1.0], "R_i": [0.5011, 2.0, 0.1998],
+        "body_j": 2, "P_j": [0.0, 0.0, 0.0], "Q_j": [1.0, 0.0, 0.0], "R_j": [0.0, 1.0, 0.0]
+      },
+      "F-G": {
+        "body_i": 1, "P_i": [-0.5011, 1.1162, 0.1998], "Q_i": [-0.5011, 1.1162, 1.0], "R_i": [-0.5011, 2.0, 0.1998],
+        "body_j": 3, "P_j": [0.0, 0.0, 0.0], "Q_j": [1.0, 0.0, 0.0], "R_j": [0.0, 1.0, 0.0]
+      }
+    },
+    "translational": {
+      "source": "Table 12.5.4, p. 472",
+      "D": {
+        "body_i": 1, "P_i": [0.0, 1.2675, -0.3748], "Q_i": [1.0, 1.2675, -0.3748], "R_i": [0.0, 2.0, -0.3748],
+        "body_j": 6, "P_j": [0.0, 0.0, 0.0], "Q_j": [1.0, 0.0, 0.0], "R_j": [0.0, 1.0, 0.0]
+      }
+    },
+    "revolute": {
+      "source": "Table 12.5.5, pp. 472-473",
+      "H": {
+        "body_i": 1, "P_i": [0.2026, -1.0095, -0.285], "Q_i": [-0.7633, -1.2683, -0.285], "R_i": [0.2026, -1.0095, 0.0],
+        "body_j": 4, "P_j": [-0.3774, 0.278, 0.0093], "Q_j": [-1.343, 0.0192, 0.0093], "R_j": [-0.3774, 0.278, 0.0]
+      },
+      "I": {
+        "body_i": 1, "P_i": [-0.2026, -1.0095, -0.285], "Q_i": [0.7633, -1.2683, -0.285], "R_i": [-0.2026, -1.0095, 0.0],
+        "body_j": 5, "P_j": [0.3774, 0.278, 0.0093], "Q_j": [1.343, 0.0192, 0.0093], "R_j": [0.774, 0.278, 1.0],
+        "note": "R_j is printed (0.774, 0.278, 1.0); joint H prints (-0.3774, 0.278, 0.0). R does not enter the constraint."
+      },
+      "J": {
+        "body_i": 1, "P_i": [0.0, 1.061, -0.3263], "Q_i": [1.0, 1.061, -0.3263], "R_i": [0.0, 2.0, -0.3263],
+        "body_j": 7, "P_j": [0.0, 0.0, 0.0], "Q_j": [1.0, 0.0, 0.0], "R_j": [0.0, 1.0, 0.0]
+      },
+      "K": {
+        "body_i": 1, "P_i": [0.0, -1.4075, -0.1813], "Q_i": [1.0, -1.4075, -0.1813], "R_i": [0.0, 2.0, -0.1813],
+        "body_j": 8, "P_j": [0.0, 0.0, 0.0], "Q_j": [1.0, 0.0, 0.0], "R_j": [0.0, 1.0, 0.0],
+        "page": 473
+      }
+    },
+    "distance": {
+      "source": "Table 12.5.6, p. 473",
+      "2-6": {"body_i": 2, "P_i": [0.07, 0.155, -0.186], "body_j": 6, "P_j": [0.305, 0.0, 0.0], "distance": 0.3742},
+      "3-6": {"body_i": 3, "P_i": [-0.07, 0.155, -0.186], "body_j": 6, "P_j": [-0.305, 0.0, 0.0], "distance": 0.3742}
+    },
+    "driver_D": {
+      "source": "p. 471 and Section 12.5.3, p. 476",
+      "definition": "translation of the rack (body 6) relative to the chassis along chassis x', C(t) of Fig. 12.5.6"
+    }
+  },
+  "tsda": {
+    "source": "Table 12.5.7, p. 473",
+    "columns": ["body_i", "body_j", "P_i", "P_j", "k_N_per_m", "c_N_s_per_m", "L0_m"],
+    "rows": [
+      [1, 2, [0.5011, 1.1162, 0.1998], [0.0, 0.0, 0.0], 38600, 150, 0.4992],
+      [1, 3, [-0.5011, 1.1162, 0.1998], [0.0, 0.0, 0.0], 38600, 150, 0.4992],
+      [1, 4, [0.58, -1.2875, 0.2], [0.0, 0.0, 0.0], 38600, 200, 0.5641],
+      [1, 5, [-0.58, -1.2875, 0.2], [0.0, 0.0, 0.0], 38600, 200, 0.5641],
+      [7, 2, [0.509, 0.1405, 0.02], [-0.0897, 0.0168, -0.2119], 83400, 0, 0.1011],
+      [7, 3, [-0.509, 0.1405, 0.02], [0.0897, 0.0168, -0.2119], 83400, 0, 0.1011],
+      [8, 4, [0.392, 0.168, -0.0474], [-0.1832, 0.048, -0.0423], 9330, 0, 0.0943],
+      [8, 5, [-0.392, 0.168, -0.0474], [0.1832, 0.048, -0.0423], 9330, 0, 0.0943]
+    ]
+  },
+  "tire_model": {
+    "source": "pp. 473-474, Fig. 12.5.3, Eqs. 12.5.1-12.5.3",
+    "vertical": "F_ver = k_t * d, d = tire vertical deformation from the height of the spindle above the road (global x-y plane)",
+    "lateral": "F_lat = C_alpha * alpha, |F_lat| <= mu * F_ver, mu < 1",
+    "slip_angle": "alpha = psi - psi_v (12.5.1); psi = 2 acos(e0), 0 <= psi < 2 pi (12.5.2); psi_v = -atan(v_x / v_y) (12.5.3); tire assumed vertical",
+    "parameters_printed": false,
+    "missing_parameters": ["k_t", "C_alpha", "mu", "unloaded tire radius or spindle reference height", "tire contact point on the wheel assembly", "longitudinal tire force (none is defined)"],
+    "solver_support": "none: the solver has no point-on-plane contact force, no slip-angle lateral force, and no friction saturation"
+  },
+  "pose_estimate": {
+    "source": "Table 12.5.8, p. 475. e1 = e2 = e3 = 0 for every body.",
+    "columns": ["x", "y", "z"],
+    "1": [0.0, 0.0, 0.55],
+    "2": [0.6, 1.17, 0.34],
+    "3": [-0.6, 1.17, 0.34],
+    "4": [0.58, -1.29, 0.26],
+    "5": [0.58, -1.29, 0.26],
+    "6": [0.0, 1.26, 0.16],
+    "7": [0.0, 1.05, 0.21],
+    "8": [0.0, -1.40, 0.38],
+    "note": "Body 5 x is printed +0.58. Wheel 5 is the rear-left wheel (joint I at x' = -0.2026, TSDA 1-5 at x' = -0.58), so the builder uses -0.58."
+  },
+  "equilibrium": {
+    "source": "Table 12.5.9, p. 476 (model 1, obtained by dynamic settling, Figs. 12.5.4-12.5.5). e0 is not printed.",
+    "columns": ["x", "y", "z", "e1", "e2", "e3"],
+    "precision": "4 decimals: rounding error <= 5e-5 per value",
+    "1": [0.0, 0.0, 0.5385, -0.0065, 0.0, -0.0005],
+    "2": [0.6014, 1.1761, 0.3449, -0.0022, -0.0065, -0.001],
+    "3": [-0.5992, 1.1772, 0.3449, -0.0023, 0.0065, -0.0002],
+    "4": [0.5788, -1.2918, 0.2617, -0.0075, -0.0003, -0.0005],
+    "5": [-0.5812, -1.2907, 0.2617, -0.0075, 0.0003, -0.0005],
+    "6": [0.0012, 1.2625, 0.1471, -0.0065, 0.0, -0.0005],
+    "7": [0.001, 1.0566, 0.1983, 0.0675, 0.0, -0.0005],
+    "8": [-0.0013, -1.4097, 0.3756, -0.0508, 0.0, -0.0002]
+  },
+  "consistency_of_book_data": {
+    "method": "Constraint residuals of the printed joint data at the printed equilibrium pose (Table 12.5.9), Haug Eqs. 9.4.22, 9.4.29, 9.4.34",
+    "consistent_joints": ["D", "H", "I", "J", "2-6", "3-6", "driver D (C = 0)"],
+    "K": "position rows within 1.2e-4 m; the axis rows give 6.0e-4 rad because body 8 prints e3 = -0.0002 while the chassis prints e3 = -0.0005 (a revolute about x' cannot change e3 by 3e-4)",
+    "A-B_and_E-F": "|AB| = 0.3227 m at the pose, printed distance 0.203 m; h_A . AB = 0.048 m (B is not in the plane normal to the pivot axis through A)",
+    "B-C_and_F-G": "the wheel-assembly strut point is 0.100 m (x) and 0.057 m (y) from the vertical chassis strut axis; the strut axis would need about 17 deg inclination",
+    "tie_rods": "the tie-rod distances 2-6 and 3-6 hold at x = +/-0.60 m, so the wheel positions of Tables 12.5.8-12.5.9 agree with Table 12.5.6 and not with Tables 12.5.2-12.5.3"
+  },
+  "figures": {
+    "fig_12_5_6_rack_driver": {
+      "page": 477,
+      "read_uncertainty_m": 5e-5,
+      "read_uncertainty_note": "1 px = 5.8e-6 m at 300 dpi; solid lines are 3-5 px wide; the dots of the lane-2 curve scatter by 4e-5 m near the extremum (-0.00249 at t = 3.15 s, -0.00253 at t = 3.3 s)",
+      "lane1": "zero for t <= 1 s; one sine period from t = 1 s to t = 4 s; extremes +0.00142 at t = 1.75 s and -0.00140 at t = 3.25 s; zero for t >= 4 s",
+      "lane2": "same timing; extremes +0.00258 at t = 1.75 s and -0.00253 at t = 3.3 s",
+      "circle": "quarter sine from 0 at t = 1 s to 0.00258 at t = 1.75 s, then constant 0.00258",
+      "sine_shape": "interpretation of the figure, not stated in the text"
+    },
+    "initial_speed": {"page": 478, "lane_change_mph": 55, "circle_mph": [20, 40, 55]},
+    "fig_12_5_4_chassis_z": {"page": 475, "start": 0.55, "final": 0.5385, "read_uncertainty_m": 3e-4, "depends_on": "tire model"},
+    "fig_12_5_5_chassis_pitch": {"page": 476, "final_rad": -0.0133, "read_uncertainty_rad": 3e-4, "depends_on": "tire model"},
+    "fig_12_5_7_lane_change_x": {"page": 477, "lane1_final_m": 3.5, "lane2_final_m": 6.3, "read_uncertainty_m": 0.15, "depends_on": "tire model"},
+    "fig_12_5_8_lane_change_xddot": {"page": 478, "lane1_extremes": [2.3, -2.3], "lane2_extremes": [4.1, -4.3], "read_uncertainty_m_s2": 0.2, "depends_on": "tire model"},
+    "fig_12_5_9_rotations_lane2": {"page": 479, "yaw_min_rad": -0.165, "roll_extremes_rad": [-0.065, 0.07], "read_uncertainty_rad": 0.005, "depends_on": "tire model"},
+    "fig_12_5_10_roll": {"page": 479, "roll_max_rad": {"m1_lane1": 0.038, "m2_lane1": 0.026, "m1_lane2": 0.068, "m2_lane2": 0.046}, "read_uncertainty_rad": 0.003, "depends_on": "tire model"},
+    "fig_12_5_11_trajectory": {"page": 480, "depends_on": "tire model and friction saturation"},
+    "fig_12_5_12_speed": {"page": 480, "start_m_s": {"20mph": 8.9, "40mph": 17.9, "55mph": 24.6}, "55mph_final_m_s": 11.3, "read_uncertainty_m_s": 0.3, "depends_on": "tire model and friction saturation"},
+    "fig_12_5_13_orientation": {"page": 481, "depends_on": "tire model and friction saturation"}
+  }
+}

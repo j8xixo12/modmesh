@@ -9,6 +9,7 @@
 #include <solvcon/inout/pymod/inout_pymod.hpp>
 #include <solvcon/mesh/pymod/mesh_pymod.hpp>
 #include <solvcon/onedim/pymod/onedim_pymod.hpp>
+#include <solvcon/multibody/pymod/multibody_pymod.hpp>
 #include <solvcon/multidim/pymod/multidim_pymod.hpp>
 #include <solvcon/python/module.hpp>
 #include <solvcon/spacetime/pymod/spacetime_pymod.hpp>
@@ -46,6 +47,8 @@ void initialize(pybind11::module_ mod)
     initialize_spacetime(spacetime_mod);
     pybind11::module_ onedim_mod = mod.def_submodule("onedim", "onedim");
     initialize_onedim(onedim_mod);
+    pybind11::module_ multibody_mod = mod.def_submodule("multibody", "multibody");
+    initialize_multibody(multibody_mod);
     initialize_transform(mod);
     pybind11::module_ timeseries_mod = mod.def_submodule("timeseries", "timeseries");
     initialize_timeseries(timeseries_mod);

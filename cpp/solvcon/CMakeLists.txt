@@ -36,6 +36,7 @@ add_subdirectory(toggle)
 add_subdirectory(profiling)
 add_subdirectory(universe)
 add_subdirectory(onedim)
+add_subdirectory(multibody)
 add_subdirectory(oasis)
 add_subdirectory(multidim)
 add_subdirectory(python)
@@ -95,6 +96,7 @@ set(SOLVCON_TERMINAL_FILES
     ${SOLVCON_MULTIDIM_FILES}
     ${SOLVCON_DEVICE_FILES}
     ${SOLVCON_ONEDIM_FILES}
+    ${SOLVCON_MULTIBODY_FILES}
     ${SOLVCON_OASIS_FILES}
     ${SOLVCON_SPACETIME_FILES}
     ${SOLVCON_PYTHON_FILES}

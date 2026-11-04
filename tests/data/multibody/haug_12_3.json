@@ -1,0 +1,158 @@
+{
+  "book": "E. J. Haug, Computer-Aided Kinematics and Dynamics of Mechanical Systems, Vol. I: Basic Methods, Allyn and Bacon, 1989",
+  "section": "12.3",
+  "title": "Dynamic analysis of a spatial four-bar mechanism",
+  "pages": "458-462 (model data: Section 10.3, pp. 402-408)",
+  "source_files": ["ref/Haug/Chapter12.pdf pp. 4-8", "ref/Haug/Chapter10.pdf pp. 10-16"],
+  "extraction": "Tables read twice (150 dpi page view and 300 dpi crop); every value matched on the second read. Figures digitized from 300 dpi renders: affine pixel-to-value map fitted to the axis ticks, curve value = center of the dark pixel run nearest to an eye-chosen point. Where two curves are close, the curve identity follows from the order of the curves (model 2 responds faster, p. 462) and was checked on an overlay image.",
+  "body_numbering": "Book ground = 4; solver ground = 0. Model 1: links 1, 2, 3 keep their numbers. Model 2: link 1 = body 1, rocker (book link 2) = body 2.",
+  "inertia": {
+    "table": "12.3.1",
+    "page": 459,
+    "units": "kg, kg m^2, body frame x'y'z'",
+    "columns": ["mass", "Ixx", "Iyy", "Izz", "Ixy", "Iyz", "Izx"],
+    "link1": [2.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0],
+    "link2": [1.0, 12.4, 0.01, 0.0, 0.0, 0.0, 0.0],
+    "link3": [1.0, 4.54, 0.01, 0.0, 0.0, 0.0, 0.0],
+    "ground": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+    "model_2": "link 2 ignored (p. 459); the rocker has the link 3 data"
+  },
+  "joints": {
+    "units": "m, body frame; P = joint point, Q - P = joint z'' axis, R - P = joint x'' axis",
+    "revolute_A_table_10_3_1": {"page": 402, "ground": {"P": [0.0, 0.0, 0.0], "Q": [1.0, 0.0, 0.0], "R": [0.0, 0.0, 1.0]},
+                                "link1": {"P": [0.0, 0.0, 0.0], "Q": [1.0, 0.0, 0.0], "R": [0.0, 0.0, 1.0]}},
+    "revolute_D_table_10_3_1": {"page": 402, "link3": {"P": [0.0, 3.7, 0.0], "Q": [1.0, 3.7, 0.0], "R": [0.0, 2.7, 0.0]},
+                                "ground": {"P": [-4.0, -8.5, 0.0], "Q": [-4.0, -9.5, 0.0], "R": [-3.0, -8.5, 0.0]}},
+    "universal_B_table_10_3_2": {"page": 404, "link1": {"P": [0.0, 0.0, 2.0], "Q": [0.750, -0.662, 2.0], "R": [0.244, 0.277, 2.929]},
+                                 "link2": {"P": [0.0, 6.1, 0.0], "Q": [0.0, 6.1, 1.0], "R": [0.0, 6.1, 0.0]},
+                                 "note": "R of link 2 equals P in the table (no x'' axis); the solver universal joint uses only the two cross axes."},
+    "spherical_C_table_10_3_3": {"page": 404, "link2": {"P": [0.0, -6.1, 0.0], "Q": [0.0, -6.1, 1.0], "R": [0.0, -5.1, 0.0]},
+                                 "link3": {"P": [0.0, -3.7, 0.0], "Q": [0.0, -3.7, 1.0], "R": [0.0, -2.7, 0.0]}},
+    "spherical_spherical_BC_table_10_3_4": {"page": 406, "link1": {"P": [0.0, 0.0, 2.0], "Q": [0.0, 1.0, 2.0], "R": [1.0, 0.0, 2.0]},
+                                            "rocker": {"P": [0.0, -3.7, 0.0], "Q": [1.0, -3.7, 0.0], "R": [0.0, -2.7, 0.0]},
+                                            "length_printed": 12.19,
+                                            "length_used": 12.2,
+                                            "note": "Table 12.3.3 gives |BC| = 12.200 m; model 1 has 6.1 + 6.1."}
+  },
+  "estimates_table_10_3_5": {
+    "page": 406,
+    "columns": ["x", "y", "z", "e1", "e2", "e3"],
+    "link1": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "link2": [-3.75, -4.25, 4.25, -0.29, -0.27, -0.26],
+    "link3": [-5.75, -8.5, 3.25, -0.36, 0.36, -0.61]
+  },
+  "assembled_table_10_3_6": {
+    "page": 406,
+    "columns": ["x", "y", "z", "e0", "e1", "e2", "e3"],
+    "link1": [0.00016, 0.00005, -0.00027, 1.0, 0.00001, -0.00004, 0.00005],
+    "link2": [-3.75300, -4.25020, 4.25530, 0.87944, -0.29098, -0.27410, -0.25910],
+    "link3": [-5.75300, -8.50010, 3.25530, 0.60687, -0.36245, 0.36247, -0.60684],
+    "consistency_note": "The link 2 orientation violates the universal joint of Table 10.3.2: z'_2 . u_1 = -0.68 (should be 0). |CD| from the link 3 entry is 7.394, not 7.4. The exact closed configuration at theta = 0 has z_3 = 3.2624."
+  },
+  "gravity": {"page": 459, "direction": "-z", "g_used": 9.8, "note": "g is not printed; the equilibrium does not depend on g"},
+  "equilibrium": {
+    "subsection": "12.3.2",
+    "model_1_table_12_3_2": {
+      "page": 459,
+      "columns": ["x", "y", "z", "e0", "e1", "e2", "e3"],
+      "link1": [0.0, 0.0, 0.0, 0.4722, -0.8815, 0.0, 0.0],
+      "link2": [0.4281, -3.418, 2.238, 0.3080, -0.1269, 0.9065, -0.2595],
+      "link3": [-1.572, -8.5, 2.792, 0.2932, -0.6435, 0.6435, -0.2932],
+      "ground": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+      "book_text": "link 3 at the relative minimum A of Fig. 10.3.4; stable equilibrium",
+      "consistency_note": "At the table crank angle (-123.65 deg) the positions are a closed configuration (4 digits), but d(PE)/d(theta) = 0.81 m g per rad (links 2 and 3 have equal mass), so the table is not a stationary point of the documented model. The stationary minimum of the documented model is at -135.9 deg. The link 2 Euler parameters violate the universal joint (z'_2 . u_1 = -0.048)."
+    },
+    "model_2_table_12_3_3": {
+      "page": 460,
+      "columns": ["x", "y", "z", "e0", "e1", "e2", "e3"],
+      "link1": [0.0, 0.0, 0.0, 0.8665, 0.4992, 0.0, 0.0],
+      "rocker": [-6.610, -8.5, 2.622, 0.6530, -0.2713, 0.2713, -0.6530],
+      "ground": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+      "point_A": [0.0, -1.730, 1.003],
+      "point_A_note": "the table row 'Point A' is the joint point B of link 1 (0, 0, 2) in global coordinates",
+      "consistency_note": "The rocker height has its minimum at theta = 58.3 deg; the table angle 59.89 deg is 0.0007 m above the minimum, less than one unit of the last printed digit of z."
+    }
+  },
+  "figure_read_uncertainty": {
+    "value": "1 % of the value-axis span",
+    "time": "1 % of the time-axis span",
+    "reason": "tick fit residual <= 0.15 % of span, line width 3-5 px = 0.3-0.5 % of span, scan skew corrected by the affine fit; 1 % covers these with margin for the pen plot"
+  },
+  "inverse_dynamics": {
+    "subsection": "12.3.3",
+    "driver": "theta = pi t about global x from theta = 0 (Sec. 10.3.3)",
+    "torque_figure": {"figure": "12.3.1(a)", "page": 460, "quantity": "driving torque on link 1 about +x [N m]",
+                      "axes": {"time": [0.0, 2.5], "value": [-150.0, 200.0]},
+                      "points": [
+                        {"curve": 1, "kind": "point", "t": 0.01, "y": -80.8},
+                        {"curve": 1, "kind": "max", "t": 0.541, "y": 179.4},
+                        {"curve": 1, "kind": "min", "t": 1.016, "y": -100.8},
+                        {"curve": 1, "kind": "max", "t": 1.521, "y": 186.1},
+                        {"curve": 1, "kind": "min", "t": 1.907, "y": -87.4},
+                        {"curve": 2, "kind": "point", "t": 0.01, "y": -43.9},
+                        {"curve": 2, "kind": "max", "t": 0.532, "y": 97.4},
+                        {"curve": 2, "kind": "min", "t": 0.909, "y": -50.7},
+                        {"curve": 2, "kind": "max", "t": 1.529, "y": 87.2},
+                        {"curve": 2, "kind": "min", "t": 1.913, "y": -48.3}
+                      ]},
+    "reaction_figure": {"figure": "12.3.1(b)", "page": 461, "quantity": "local reaction x force at A [N]",
+                        "frame_note": "Joint A lists the ground first (Table 10.3.1); the value is the x component of the joint reaction on the ground, in the ground (= global) frame. The sign and t = 0 values (-43, -20 N) identify this choice.",
+                        "axes": {"time": [0.0, 2.5], "value": [-200.0, 40.0]},
+                        "points": [
+                          {"curve": 1, "kind": "point", "t": 0.01, "y": -43.0},
+                          {"curve": 1, "kind": "min", "t": 0.449, "y": -158.6},
+                          {"curve": 1, "kind": "max", "t": 0.846, "y": 18.3},
+                          {"curve": 1, "kind": "max", "t": 1.580, "y": 16.4},
+                          {"curve": 1, "kind": "min", "t": 2.451, "y": -158.7},
+                          {"curve": 2, "kind": "point", "t": 0.01, "y": -20.0},
+                          {"curve": 2, "kind": "min", "t": 0.437, "y": -74.6},
+                          {"curve": 2, "kind": "point", "t": 0.85, "y": 6.0},
+                          {"curve": 2, "kind": "min", "t": 2.448, "y": -75.3}
+                        ]}
+  },
+  "dynamics": {
+    "subsection": "12.3.4",
+    "load": "torque n = 10 N m on link 1, counterclockwise about +x, start from rest at the configuration of Table 10.3.5 / 10.3.6, gravity on",
+    "z_figure": {"figure": "12.3.2(a)", "page": 461, "quantity": "z of the centroid of link CD [m]",
+                 "axes": {"time": [0.0, 2.0], "value": [2.5, 3.75]},
+                 "note": "The plotted extremes (2.606, 3.687) lie outside the kinematic range of the rocker centroid (2.6215 to 3.7000, Fig. 10.3.4), so the plot carries an offset of about -0.012 m. The extreme values are not compared; both curves touch there.",
+                 "points": [
+                   {"curve": 1, "kind": "point", "t": 0.3, "y": 3.177},
+                   {"curve": 1, "kind": "point", "t": 0.6, "y": 2.931},
+                   {"curve": 1, "kind": "point", "t": 1.2, "y": 3.139},
+                   {"curve": 1, "kind": "point", "t": 1.8, "y": 3.641},
+                   {"curve": 1, "kind": "point", "t": 1.98, "y": 3.425},
+                   {"curve": 2, "kind": "point", "t": 0.3, "y": 3.162},
+                   {"curve": 2, "kind": "point", "t": 0.6, "y": 2.874},
+                   {"curve": 2, "kind": "point", "t": 1.2, "y": 3.223},
+                   {"curve": 2, "kind": "point", "t": 1.8, "y": 3.583},
+                   {"curve": 2, "kind": "point", "t": 1.98, "y": 3.275}
+                 ],
+                 "extremum_times": [
+                   {"curve": 1, "kind": "min", "t": 0.899},
+                   {"curve": 1, "kind": "max", "t": 1.642},
+                   {"curve": 2, "kind": "min", "t": 0.869},
+                   {"curve": 2, "kind": "max", "t": 1.620}
+                 ]},
+    "zdot_figure": {"figure": "12.3.2(b)", "page": 462, "quantity": "z velocity of the centroid of link CD [m/s]",
+                    "axes": {"time": [0.0, 2.0], "value": [-3.0, 3.0]},
+                    "points": [
+                      {"curve": 1, "kind": "point", "t": 0.3, "y": -0.516},
+                      {"curve": 1, "kind": "point", "t": 0.5, "y": -0.929},
+                      {"curve": 1, "kind": "point", "t": 0.6, "y": -1.130},
+                      {"curve": 1, "kind": "point", "t": 1.0, "y": 1.712},
+                      {"curve": 1, "kind": "point", "t": 1.3, "y": 1.814},
+                      {"curve": 1, "kind": "point", "t": 1.6, "y": 0.329},
+                      {"curve": 1, "kind": "point", "t": 1.8, "y": -0.742},
+                      {"curve": 1, "kind": "point", "t": 1.98, "y": -1.716},
+                      {"curve": 2, "kind": "point", "t": 0.3, "y": -0.626},
+                      {"curve": 2, "kind": "point", "t": 0.5, "y": -1.092},
+                      {"curve": 2, "kind": "point", "t": 0.6, "y": -1.281},
+                      {"curve": 2, "kind": "point", "t": 1.0, "y": 2.080},
+                      {"curve": 2, "kind": "point", "t": 1.3, "y": 1.661},
+                      {"curve": 2, "kind": "point", "t": 1.6, "y": 0.069},
+                      {"curve": 2, "kind": "point", "t": 1.8, "y": -1.191},
+                      {"curve": 2, "kind": "point", "t": 1.98, "y": -2.301}
+                    ]}
+  }
+}

@@ -68,6 +68,13 @@ def _hide_windows():
 _config_home = None
 _saved_config_home = None
 
+#: Markers that the multibody tests (test_multibody_*.py) use.
+MARKERS = (
+    "slow: long-running test",
+    "integration: integration test of the multibody engine",
+    "requires_build: needs the compiled multibody engine",
+)
+
 
 def pytest_configure(config):
     """Send the application configuration to a scratch directory for the run.
@@ -79,6 +86,8 @@ def pytest_configure(config):
     _saved_config_home = os.environ.get("SOLVCON_CONFIG_HOME")
     _config_home = tempfile.mkdtemp(prefix="solvcon-test-config-")
     os.environ["SOLVCON_CONFIG_HOME"] = _config_home
+    for marker in MARKERS:
+        config.addinivalue_line("markers", marker)
 
 
 def pytest_unconfigure(config):

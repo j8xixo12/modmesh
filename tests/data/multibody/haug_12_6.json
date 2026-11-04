@@ -1,0 +1,107 @@
+{
+  "book": "Haug, Computer-Aided Kinematics and Dynamics of Mechanical Systems, Vol. I (1989)",
+  "section": "12.6 Dynamic Analysis of a Governor Mechanism",
+  "pages": "481-488 (PDF ref/Haug/Chapter12.pdf pages 27-34)",
+  "extraction": "Tables read twice: once from the PDF page images, once from 220 dpi crops of the same pages. Every value below matched on both reads. Figures digitized from 300 dpi renders by a pixel scan of the plot column at each time; axis calibration from the tick marks.",
+  "units": "SI. Global y is vertical (up); gravity acts along -y.",
+  "gravity": {
+    "value": 9.8,
+    "printed": false,
+    "note": "Inferred: the steady state of Section 12.6.2 gives 11.0175 rad/s with g = 9.8 and 11.0212 rad/s with g = 9.80665 (book 11.0174)."
+  },
+  "bodies": {
+    "source": "Table 12.6.1, p. 482",
+    "columns": ["mass", "Ix", "Iy", "Iz", "Ixy", "Iyz", "Ixz"],
+    "1_ground": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+    "2_spindle": [200.0, 25.0, 50.0, 25.0, 0.0, 0.0, 0.0],
+    "3_ball1": [1.0, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0],
+    "4_ball2": [1.0, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0],
+    "5_collar": [1.0, 0.15, 0.125, 0.15, 0.0, 0.0, 0.0]
+  },
+  "model_count": {"source": "p. 483", "nc": 35, "nh": 33, "dof": 2},
+  "joints": {
+    "format": "Body-fixed points (x', y', z'). The joint axis of a body is Q - P.",
+    "DIST1": {"source": "Table 12.6.2, p. 483", "body_i": 3, "P_i": [-0.08, 0.0, 0.0], "Q_i": [-0.08, 0.0, 1.0], "R_i": [1.08, 0.0, 0.0],
+              "body_j": 5, "P_j": [0.0, 0.0, 0.0], "Q_j": [0.0, 0.0, 1.0], "R_j": [1.0, 0.0, 0.0], "distance": 0.10922},
+    "DIST2": {"source": "Table 12.6.2, p. 483", "body_i": 4, "P_i": [0.08, 0.0, 0.0], "Q_i": [0.08, 0.0, 1.0], "R_i": [1.08, 0.0, 0.0],
+              "body_j": 5, "P_j": [0.0, 0.0, 0.0], "Q_j": [0.0, 0.0, 1.0], "R_j": [1.0, 0.0, 0.0], "distance": 0.10922},
+    "REV1": {"source": "Table 12.6.3, p. 484", "body_i": 1, "P_i": [0.0, 0.0, 0.0], "Q_i": [0.0, 1.0, 0.0], "R_i": [0.0, 0.0, 1.0],
+             "body_j": 2, "P_j": [0.0, -0.2, 0.0], "Q_j": [0.0, -1.2, 0.0], "R_j": [0.0, -0.2, 1.0],
+             "note": "Q_j - P_j = (0, -1, 0) is antiparallel to Q_i - P_i; a revolute joint needs only parallel axes."},
+    "REV2": {"source": "Table 12.6.3, p. 484", "body_i": 2, "P_i": [0.0, 0.0, 0.0], "Q_i": [0.0, 0.0, 1.0], "R_i": [1.0, 0.0, 0.0],
+             "body_j": 3, "P_j": [-0.16, 0.0, 0.0], "Q_j": [-0.16, 0.0, 1.0], "R_j": [1.0, 0.0, 0.0]},
+    "REV3": {"source": "Table 12.6.3, p. 484", "body_i": 2, "P_i": [0.0, 0.0, 0.0], "Q_i": [0.0, 0.0, 1.0], "R_i": [1.0, 0.0, 0.0],
+             "body_j": 4, "P_j": [0.16, 0.0, 0.0], "Q_j": [0.16, 0.0, 1.0], "R_j": [1.0, 0.0, 0.0]},
+    "TRANS1": {"source": "Table 12.6.4, p. 484", "body_i": 2, "P_i": [0.0, 0.0, 0.0], "Q_i": [0.0, 1.0, 0.0], "R_i": [0.0, 0.0, 1.0],
+               "body_j": 5, "P_j": [0.0, 0.0, 0.0], "Q_j": [0.0, 1.0, 0.0], "R_j": [0.0, 0.0, 1.0]}
+  },
+  "tsda": {
+    "source": "Table 12.6.5, p. 484",
+    "body_i": 2, "P_i": [0.0, 0.0, 0.0], "body_j": 5, "P_j": [0.0, 0.0, 0.0],
+    "k_N_per_m": [1000, 2000, 3000], "c_kg_per_s": 30, "L0_m": 0.15
+  },
+  "steady_state": {
+    "source": "Section 12.6.2 and Table 12.6.6, p. 485",
+    "omega_rad_s": 11.0174,
+    "arm_slope_deg": 45,
+    "columns": ["x", "y", "z", "e0", "e1", "e2", "e3"],
+    "1_ground": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    "2_spindle": [0.0, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0],
+    "3_ball1": [0.11314, 0.08686, 0.0, 0.9239, 0.0, 0.0, 0.3827],
+    "4_ball2": [-0.11314, 0.08686, 0.0, 0.9239, 0.0, 0.0, 0.3827],
+    "5_collar": [0.0, 0.05, 0.0, 1.0, 0.0, 0.0, 0.0],
+    "note": "Ball 1 e3 is printed +0.3827. REV2 puts the hinge at x' = -0.16 of ball 1, and the hinge is at the spindle origin (0, 0.2, 0); this needs e3 = -0.3827. With e3 = +0.3827 the hinge would be at (0, -0.0263, 0). The builder uses -0.3827."
+  },
+  "external_torque": {
+    "source": "Section 12.6.3, Fig. 12.6.2, Eq. 12.6.1, p. 485",
+    "T_e": "0 for t <= 1 s, linear to -25 N m at t = 2 s, -25 N m after (about +y, opposing the spin)",
+    "T_s": "C * dl, dl = spring deformation = downward collar movement from the steady state",
+    "C": [7500, 12500, 17500],
+    "solver_support": "No force element with a state-dependent torque. examples/haug/governor.py applies T_e + T_s as a constant body torque per coupling step and rebuilds the system each step (Heun predictor-corrector on dl). The coupling error at dt = 0.02 s is below 4e-6 (checked against dt = 0.0025 s)."
+  },
+  "dynamic_analysis": {
+    "source": "Section 12.6.4, p. 488",
+    "start": "steady state of Table 12.6.6, omega = 11.0174 rad/s",
+    "figure_units": "The collar y axes of Figs. 12.6.3 and 12.6.5 are labeled (m) but read 4.6 to 5.1 for a collar at y = 0.05 m; the plotted unit is 0.01 m. The values below are in the plotted unit.",
+    "read_method": "Raw pixel readings. 'anchor' is the reading of the initial plateau, where the exact value is known (collar 5.000, omega 11.0174); a test subtracts the anchor offset.",
+    "fig_12_6_3": {
+      "page": 487, "quantity": "collar y (0.01 m)", "C": 12500, "axis": [4.7, 5.1],
+      "px_per_unit": 2578, "anchor": {"t": 0.5, "reading": 5.0008, "exact": 5.0},
+      "ripple_half_amplitude": {"k1000_t_ge_4": 0.003, "k2000_t_ge_5": 0.003},
+      "identification_note": "At t = 3 s the 4.9019 run is the dash-dot (k = 2000) curve; the dotted curve lies near 4.93 there and the scan column hits a gap between its dots.",
+      "k1000": {"3": 4.8354, "4": 4.8108, "5": 4.8028, "6": 4.8003, "8": 4.7993, "9": 4.8003},
+      "k2000": {"3": 4.9019, "4": 4.8653, "5": 4.8439, "6": 4.8304, "8": 4.8119, "9": 4.8106},
+      "k3000": {"4": 4.9023, "5": 4.8787, "9": 4.8294}
+    },
+    "fig_12_6_4": {
+      "page": 487, "quantity": "spindle omega (rad/s)", "C": 12500, "axis": [9.1, 11.1],
+      "px_per_unit": 517, "anchor": {"t": 0.5, "reading": 11.0185, "exact": 11.0174},
+      "k1000": {"3": 10.6648, "4": 10.6135, "5": 10.5981, "6": 10.5942, "7": 10.5942, "8": 10.5952, "9": 10.5961},
+      "k2000": {"3": 10.4724, "3.5": 10.3632, "4": 10.282, "5": 10.1544, "6": 10.0733, "7": 10.022, "8": 9.9872, "9": 9.966},
+      "k3000": {"3.5": 10.2559, "4": 10.1332, "8": 9.5359}
+    },
+    "fig_12_6_5": {
+      "page": 486, "quantity": "collar y (0.01 m)", "k": 1000, "axis": [4.6, 5.1],
+      "px_per_unit": 2062, "anchor": {"t": 0.75, "reading": 4.9984, "exact": 5.0},
+      "ripple_half_amplitude": {"C7500_t_ge_4": 0.002, "C12500_t_ge_4": 0.003, "C17500_t_ge_4": 0.005},
+      "C7500": {"3": 4.7833, "4": 4.7251, "5": 4.6953, "6": 4.68, "7": 4.6718, "8": 4.6679, "9": 4.6657, "9.8": 4.6662},
+      "C12500": {"3": 4.833, "4": 4.8081, "5": 4.8003, "6": 4.7969, "8": 4.7952, "9": 4.7957},
+      "C17500": {"5": 4.8551, "6": 4.8534},
+      "note": "C = 17,500 grows into an oscillation after t = 6 s (unstable feedback, p. 488); later points depend on the oscillation phase and are not tabulated."
+    },
+    "fig_12_6_6": {
+      "page": 486, "quantity": "spindle omega (rad/s)", "k": 1000, "axis": [10.1, 11.1],
+      "px_per_unit": 1036, "anchor": {"t": 0.75, "reading": 11.0136, "exact": 11.0174},
+      "ripple_half_amplitude": {"C17500_t_ge_5": 0.004},
+      "C7500": {"2": 10.8066, "3": 10.5513, "4": 10.4209, "5": 10.3539, "6": 10.3206, "7": 10.3032, "8": 10.2935, "9": 10.2887, "9.8": 10.2868},
+      "C12500": {"2": 10.8321, "3": 10.6623, "4": 10.6068, "5": 10.5884, "6": 10.5817, "8": 10.5768, "9": 10.5759, "9.8": 10.5735},
+      "C17500": {"2": 10.8524, "6": 10.7081, "8": 10.7134}
+    },
+    "read_uncertainty": "1 percent of the plotted axis span (Fig. 12.6.3: 0.004, Fig. 12.6.4: 0.02, Fig. 12.6.5: 0.005, Fig. 12.6.6: 0.01), plus the ripple half amplitude where the book curve ripples, because the ripple phase of an independent integration need not match point by point",
+    "consistency_notes": [
+      "Figs. 12.6.4 (k = 1000) and 12.6.6 (C = 12,500) show the same nominal case; at t = 8 s they read 10.595 and 10.577 rad/s.",
+      "The exact final steady state of the book model for k = 1000, C = 12,500 is omega = 10.5818 rad/s, collar y = 4.800 (torque balance 12500 * dl = 25 N m).",
+      "The k = 2000 and k = 3000 curves of Figs. 12.6.3-12.6.4 are close to solver runs with k = 3000 and k = 5000: at t = 5 s the book k = 2000 curve reads collar 4.844, omega 10.154; the solver with k = 3000 gives 4.843, 10.144."
+    ]
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "book": "E. J. Haug, Computer-Aided Kinematics and Dynamics of Mechanical Systems, Vol. I: Basic Methods, Allyn and Bacon, 1989",
+  "section": "12.2",
+  "title": "Dynamic analysis of a spatial slider-crank mechanism",
+  "pages": "455-458 (model data: Section 10.2, pp. 396-399)",
+  "source_files": ["ref/Haug/Chapter12.pdf pp. 1-4", "ref/Haug/Chapter10.pdf pp. 4-9"],
+  "extraction": "Tables read twice (150 dpi page view and 300 dpi crop); every value matched on the second read. Figures digitized from 300 dpi renders (pdftoppm -r 300): affine pixel-to-value map fitted to the axis ticks, curve value = center of the dark pixel run nearest to an eye-chosen point, curve identity checked on an overlay image.",
+  "body_numbering": "Book ground = 4; solver ground = 0. Crank 1, connecting rod 2, slider 3 keep their numbers.",
+  "inertia": {
+    "table": "12.2.1",
+    "page": 456,
+    "units": "kg, kg m^2, body frame x'y'z'",
+    "columns": ["mass", "Ixx", "Iyy", "Izz", "Ixy", "Iyz", "Izx"],
+    "crank": [0.12, 0.0001, 0.00001, 0.0001, 0.0, 0.0, 0.0],
+    "connecting_rod": [0.5, 0.004, 0.0004, 0.004, 0.0, 0.0, 0.0],
+    "slider": [2.0, 0.0001, 0.0001, 0.0001, 0.0, 0.0, 0.0],
+    "ground": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+  },
+  "joints": {
+    "page": "397-398",
+    "units": "m, body frame; P = joint point, Q - P = joint z'' axis, R - P = joint x'' axis",
+    "revolute_A_table_10_2_1": {"crank": {"P": [0.0, 0.0, 0.0], "Q": [1.0, 0.0, 0.0], "R": [0.0, 0.0, 1.0]},
+                                "ground": {"P": [0.0, 0.1, 0.12], "Q": [1.0, 0.1, 0.12], "R": [0.0, 0.1, 1.12]}},
+    "spherical_B_table_10_2_2": {"crank": {"P": [0.0, 0.08, 0.0], "Q": [0.0, 0.08, 1.0], "R": [1.0, 0.08, 0.0]},
+                                 "connecting_rod": {"P": [-0.15, 0.0, 0.0], "Q": [-0.15, 0.0, 1.0], "R": [1.15, 0.0, 0.0]}},
+    "revolute_cylindrical_C_table_10_2_3": {"connecting_rod": {"P": [0.15, 0.0, 0.0], "Q": [0.15, 1.0, 0.0], "R": [1.15, 0.0, 0.0]},
+                                            "slider": {"P": [0.2, 0.0, 0.0], "Q": [1.2, 0.0, 0.0], "R": [0.2, 1.0, 0.0]}},
+    "translational_D_table_10_2_4": {"slider": {"P": [0.0, 0.0, 0.0], "Q": [1.0, 0.0, 0.0], "R": [0.0, 1.0, 0.0]},
+                                     "ground": {"P": [0.2, 0.0, 0.0], "Q": [1.2, 0.0, 0.0], "R": [0.2, 1.0, 0.0]}},
+    "distance_table_10_2_5": {"connecting_rod": {"P": [0.15, 0.0, 0.0], "Q": [0.15, 1.0, 0.0], "R": [0.15, 0.0, 1.0]},
+                              "slider": {"P": [1.0, 0.0, 0.0], "Q": [1.0, 1.0, 0.0], "R": [1.0, 0.0, 1.0]},
+                              "distance": 1.0}
+  },
+  "assembled_configuration": {
+    "table": "10.2.7",
+    "page": 399,
+    "columns": ["x", "y", "z", "e0", "e1", "e2", "e3"],
+    "crank": [0.00002, 0.09982, 0.12005, 0.72090, 0.69306, 0.00004, -0.00004],
+    "connecting_rod": [0.09993, 0.05183, 0.09998, 0.88723, -0.21202, 0.39833, -0.09569],
+    "slider": [0.19959, 0.00057, -0.00008, 1.0, 0.0, -0.00012, -0.00025],
+    "ground": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+  },
+  "forces": {
+    "page": 455,
+    "text": "The book lists inertia, forces, and initial conditions as the data for dynamics but prints no force data.",
+    "model_assumption": "gravity along -z on every body; g = 9.8 m/s^2 (not printed). Fig. 12.2.1 matches only with gravity: at t = 0.8 s the book shows -0.29 N m, the model gives -0.28 N m with gravity and -0.10 N m without."
+  },
+  "figure_read_uncertainty": {
+    "value": "1 % of the value-axis span",
+    "time": "1 % of the time-axis span",
+    "reason": "tick fit residual <= 0.1 % of span (Figs. 12.2.1-12.2.3) and <= 0.12 % (Fig. 12.2.4), line width 3-5 px = 0.3-0.5 % of span, scan skew corrected by the affine fit; 1 % covers these with margin for the pen plot",
+    "initial_slider_velocity": "0.007 m/s: isolated, almost straight segment at t = 0.005 s; tick fit residual 0.0011 m/s plus +/- 1.5 px line center (0.006 m/s)"
+  },
+  "inverse_dynamics": {
+    "subsection": "12.2.2",
+    "figure": "12.2.1",
+    "page": 456,
+    "quantity": "driving torque on the crank [N m]",
+    "driver": "constant crank speed 2 pi rad/s (60 rpm); the crank turns in the negative sense about global x (same as Fig. 10.2.3, x of the slider decreases first); the torque is the torque on the crank about +x",
+    "axes": {"time": [0.0, 1.0], "value": [-1.0, 1.0]},
+    "legend_note": "The legend prints l = 0.7 m for the dash-dot curve; the text (p. 456) says l = 0.27 m.",
+    "rod_length_note": "The book gives the joint data for l = 0.3 m only; the rod ends are taken at -l/2 and +l/2 with the inertia of Table 12.2.1.",
+    "points": [
+      {"curve": 0.3, "kind": "max", "t": 0.043, "y": 0.177},
+      {"curve": 0.3, "kind": "min", "t": 0.183, "y": 0.046},
+      {"curve": 0.3, "kind": "max", "t": 0.372, "y": 0.202},
+      {"curve": 0.3, "kind": "min", "t": 0.773, "y": -0.295},
+      {"curve": 0.27, "kind": "max", "t": 0.037, "y": 0.273},
+      {"curve": 0.27, "kind": "min", "t": 0.195, "y": -0.056},
+      {"curve": 0.27, "kind": "max", "t": 0.377, "y": 0.249},
+      {"curve": 0.27, "kind": "min", "t": 0.795, "y": -0.331},
+      {"curve": 0.24, "kind": "max", "t": 0.071, "y": 0.956},
+      {"curve": 0.24, "kind": "min", "t": 0.137, "y": -0.716},
+      {"curve": 0.24, "kind": "max", "t": 0.342, "y": 0.383},
+      {"curve": 0.24, "kind": "min", "t": 0.801, "y": -0.422}
+    ]
+  },
+  "dynamics": {
+    "subsection": "12.2.3",
+    "figures": {"x": "12.2.2 (p. 457)", "xdot": "12.2.3 (p. 457)", "xddot": "12.2.4 (p. 458)"},
+    "rod_length": 0.3,
+    "stated_initial_crank_speed": {"values_rad_s": [6.0, 6.283185307179586, 8.0], "values_rpm": [43.6, 60.0, 76.4],
+                                   "page": 458, "note": "6 rad/s is 57.3 rpm, not 43.6 rpm; the text is inconsistent."},
+    "initial_slider_velocity_read": {"figure": "12.2.3", "t": 0.005, "w=6": 0.2615, "w=2pi": 0.3596, "w=8": 0.4609},
+    "initial_condition_note": "At the start pose x = 0.2 m the kinematics give dx/dtheta = 0.0384 m/rad, and |dx/dtheta| <= 0.0526 m/rad over a full turn. The plotted xdot(0) = 0.36 m/s (w = 2 pi) and 0.46 m/s (w = 8) need crank rates of 9.4 and 12.0 rad/s, more than the stated speeds can give at any crank angle. The ratio to the stated speed is 1.49 and 1.50, and 1.49 to 43.6 rpm for the first run. The tests therefore start each run with the crank rate that reproduces the plotted initial slider velocity and compare the rest of the histories. The crank turns in the positive sense about x (xdot(0) > 0).",
+    "axes": {"x": {"time": [0.0, 1.0], "value": [0.15, 0.31]},
+             "xdot": {"time": [0.0, 1.0], "value": [-1.0, 1.0]},
+             "xddot": {"time": [0.0, 1.0], "value": [-30.0, 40.0]}},
+    "x_points": [
+      {"curve": "w=6", "kind": "max", "t": 0.274, "y": 0.2899},
+      {"curve": "w=6", "kind": "min", "t": 0.526, "y": 0.1847},
+      {"curve": "w=6", "kind": "max", "t": 0.870, "y": 0.2894},
+      {"curve": "w=2pi", "kind": "max", "t": 0.226, "y": 0.2900},
+      {"curve": "w=2pi", "kind": "min", "t": 0.447, "y": 0.1848},
+      {"curve": "w=2pi", "kind": "max", "t": 0.729, "y": 0.2895},
+      {"curve": "w=2pi", "kind": "min", "t": 0.949, "y": 0.1848},
+      {"curve": "w=8", "kind": "max", "t": 0.197, "y": 0.2900},
+      {"curve": "w=8", "kind": "min", "t": 0.385, "y": 0.1848},
+      {"curve": "w=8", "kind": "max", "t": 0.618, "y": 0.2895},
+      {"curve": "w=8", "kind": "min", "t": 0.814, "y": 0.1847}
+    ],
+    "xdot_points": [
+      {"curve": "w=6", "kind": "max", "t": 0.221, "y": 0.447},
+      {"curve": "w=6", "kind": "min", "t": 0.359, "y": -0.602},
+      {"curve": "w=2pi", "kind": "max", "t": 0.168, "y": 0.510},
+      {"curve": "w=2pi", "kind": "min", "t": 0.307, "y": -0.668},
+      {"curve": "w=8", "kind": "max", "t": 0.132, "y": 0.585},
+      {"curve": "w=8", "kind": "min", "t": 0.258, "y": -0.721}
+    ],
+    "xddot_spike_times": {
+      "note": "Time of the positive acceleration spikes. The spike heights are not compared: the plotted peaks depend on the output interval of the book run, which the book does not give.",
+      "points": [
+        {"curve": "w=6", "t": 0.522, "y": 14.5},
+        {"curve": "w=2pi", "t": 0.445, "y": 22.9},
+        {"curve": "w=2pi", "t": 0.948, "y": 22.6},
+        {"curve": "w=8", "t": 0.384, "y": 34.0},
+        {"curve": "w=8", "t": 0.813, "y": 33.9}
+      ]
+    }
+  }
+}
