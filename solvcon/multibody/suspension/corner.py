@@ -115,8 +115,16 @@ def strut_frame(model):
     return axis / np.linalg.norm(axis), low
 
 
+def _load(gravity, mass):
+    """The constant body force (N) of ``mass`` in the acceleration field
+    ``gravity``: a scalar is g along -z, a 3-vector is the field."""
+    if np.ndim(gravity) == 0:
+        return [0.0, 0.0, -float(gravity) * mass]
+    return [float(a) * mass for a in gravity]
+
+
 def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
-               travel_func=None, steer_func=None, gravity=0.0):
+               travel_func=None, steer_func=None, gravity=0.0, velocity=None):
     """Add the bodies, joints, drivers, and spring of one corner.
 
     :param mbs: compiled solver module
@@ -137,8 +145,12 @@ def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
         None for no travel driver (for example with a tire)
     :param steer_func: drive function of the rack travel (m); None fixes the
         rack at design; ignored without a rack
-    :param gravity: gravitational acceleration along -z (m/s^2)
-    :type gravity: float
+    :param gravity: gravitational acceleration along -z (m/s^2), or the
+        acceleration field as a global 3-vector (gravity plus a D'Alembert
+        load, for example (0, -a_y, -g) in a steady turn)
+    :type gravity: float or sequence
+    :param velocity: initial velocity (m/s, global) of every corner body,
+        the velocity of a chassis in pure translation; None is at rest
     :return: handles
     :rtype: Corner
     """
@@ -146,6 +158,7 @@ def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
     up_pts = model.upright_points()
     wc = up_pts["wheel_center"]
     co = np.asarray(chassis_origin, float)
+    vel = Z if velocity is None else [float(v) for v in velocity]
 
     def chassis_local(name):
         return list(model.chassis_point(name) - co)
@@ -156,25 +169,25 @@ def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
     c = Corner()
     c.nums = body_numbers(model, first_num)
     c.upright = mbs.create_mobilized_body_quat(
-        c.nums["upright"], list(wc), Z, Z, [1, 0, 0, 0], Z, Z,
+        c.nums["upright"], list(wc), vel, Z, [1, 0, 0, 0], Z, Z,
         model.upright_mass, model.upright_inertia,
-        [0, 0, -gravity * model.upright_mass], Z)
+        _load(gravity, model.upright_mass), Z)
     sys_obj.Add(c.upright)
     if model.has_rocker:
         piv = hp["rocker_pivot"]
         c.rocker = mbs.create_mobilized_body_quat(
-            c.nums["rocker"], list(piv), Z, Z, [1, 0, 0, 0], Z, Z,
+            c.nums["rocker"], list(piv), vel, Z, [1, 0, 0, 0], Z, Z,
             model.rocker_mass, model.rocker_inertia,
-            [0, 0, -gravity * model.rocker_mass], Z)
+            _load(gravity, model.rocker_mass), Z)
         sys_obj.Add(c.rocker)
     rack_pos = None
     if model.has_rack:
         rack_pos = model.chassis_point("tie_rod_inner") \
             if "tie_rod_inner" in hp else _rack_origin(model)
         c.rack = mbs.create_mobilized_body_quat(
-            c.nums["rack"], list(rack_pos), Z, Z, [1, 0, 0, 0], Z, Z,
+            c.nums["rack"], list(rack_pos), vel, Z, [1, 0, 0, 0], Z, Z,
             model.rack_mass, [1e-3, 1e-3, 1e-3],
-            [0, 0, -gravity * model.rack_mass], Z)
+            _load(gravity, model.rack_mass), Z)
         sys_obj.Add(c.rack)
         axis = list(model.rack_axis)
         c.add_joint(sys_obj, "rack prismatic",
@@ -196,9 +209,9 @@ def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
         origin, axis, ball = arm_frame(model, arm)
         spec = model.arms[arm]
         body = mbs.create_mobilized_body_quat(
-            c.nums["arm_" + arm], list(origin), Z, Z, [1, 0, 0, 0], Z, Z,
+            c.nums["arm_" + arm], list(origin), vel, Z, [1, 0, 0, 0], Z, Z,
             spec["mass"], spec["inertia"],
-            [0, 0, -gravity * spec["mass"]], Z)
+            _load(gravity, spec["mass"]), Z)
         sys_obj.Add(body)
         c.add_joint(sys_obj, f"{arm} arm pivot",
                     mbs.create_joint(1, list(origin - co), Z, Z, Z,

@@ -1,0 +1,12 @@
+{
+  "name": "Road car: MacPherson front (Yang 2019, CEVT), five-link rear (Grzyb & Kowalski 2001)",
+  "source": "The corner geometries are the library models macpherson_front and five_link_rear. The vehicle data are assumed values of a compact car: sprung mass 1500 kg (the corner_mass of the two models), 53 percent on the front axle, CG height 550 mm, wheelbase 2700 mm, roll, pitch, and yaw inertia 500, 2000, 2200 kg m^2, cornering stiffness 1200 N/deg front and 1300 N/deg rear per tire (a 205/55 R16 tire near 4 kN, about 0.3 per degree of the load).",
+  "front": "macpherson_front",
+  "rear": "five_link_rear",
+  "wheelbase": 2700.0,
+  "sprung_mass": 1500.0,
+  "front_fraction": 0.5333,
+  "cg_height": 550.0,
+  "sprung_inertia": [500.0, 2000.0, 2200.0],
+  "tire": {"cornering_stiffness": [1200.0, 1300.0], "mu": 1.0}
+}

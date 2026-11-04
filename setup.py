@@ -100,7 +100,8 @@ def main():
             'solvcon.track.mcap',
         ],
         package_data={
-            'solvcon.multibody.suspension': ['data/*.json'],
+            'solvcon.multibody.suspension': ['data/*.json',
+                                             'data/vehicles/*.json'],
         },
         install_requires=['jsonschema>=4'],
         ext_modules=[CMakeExtension("_solvcon")],

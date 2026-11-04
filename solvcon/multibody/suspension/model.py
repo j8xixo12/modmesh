@@ -466,6 +466,24 @@ class CornerModel:
             m.limits[name] = {"min": np.minimum(a, b), "max": np.maximum(a, b)}
         return m
 
+    def translated(self, offset):
+        """Return a copy moved by ``offset`` (m, global): a corner placed in
+        a vehicle, for example a rear corner one wheelbase behind the front
+        axle.
+
+        :param offset: translation (m)
+        :type offset: sequence
+        :rtype: CornerModel
+        """
+        d = np.asarray(offset, dtype="float64")
+        m = copy.deepcopy(self)
+        for k in m.hp:
+            m.hp[k] = m.hp[k] + d
+        for box in m.limits.values():
+            box["min"] = box["min"] + d
+            box["max"] = box["max"] + d
+        return m
+
     def hardpoint_names(self):
         """Names of the editable hardpoints.
 

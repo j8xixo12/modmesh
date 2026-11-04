@@ -24,14 +24,21 @@ Z = [0.0, 0.0, 0.0]
 EZ = [0.0, 0.0, 1.0]
 
 
-def _add_arb_half(mbs, s, model, chassis, corner, num):
+def _add_arb_half(mbs, s, model, chassis, corner, num, origin=None,
+                  velocity=None):
+    """Add one half-bar on a revolute joint to the chassis and its drop
+    link to the rocker; ``origin`` is the global position of the chassis
+    frame origin (None: the chassis is the ground)."""
     piv = model.hp["arb_pivot"]
-    half = mbs.create_mobilized_body_quat(num, list(piv), Z, Z, [1, 0, 0, 0],
+    co = np.zeros(3) if origin is None else np.asarray(origin, float)
+    vel = Z if velocity is None else [float(v) for v in velocity]
+    half = mbs.create_mobilized_body_quat(num, list(piv), vel, Z, [1, 0, 0, 0],
                                           Z, Z, model.arb["mass"],
                                           model.arb["inertia"], Z, Z)
     s.Add(half)
     ax = list(model.arb["axis"])
-    s.Add(mbs.create_joint(1, list(piv), Z, Z, Z, ax, ax, chassis, half))
+    s.Add(mbs.create_joint(1, list(piv - co), Z, Z, Z, ax, ax, chassis,
+                           half))
     tip_local = list(model.hp["arb_tip"] - piv)
     rocker_local = list(model.hp["arb_rocker"] - model.hp["rocker_pivot"])
     length = float(np.linalg.norm(model.hp["arb_tip"]
