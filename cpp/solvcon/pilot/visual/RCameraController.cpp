@@ -140,6 +140,12 @@ void RCameraController::orbitBy(float yaw_deg, float pitch_deg)
         return;
     }
 
+    if (!m_world_up.isNull())
+    {
+        orbitAboutWorldUp(yaw_deg, pitch_deg);
+        return;
+    }
+
     // Turntable: swing the eye around the fixed target, up axis held so the
     // horizon never rolls.
     QVector3D const offset = m_position - m_target;
@@ -158,6 +164,44 @@ void RCameraController::orbitBy(float yaw_deg, float pitch_deg)
         rotated = yaw.rotatedVector(offset);
     }
     m_position = m_target + rotated;
+}
+
+namespace
+{
+
+/// The screen up axis that keeps the horizon level for a view along
+/// @p forward: the world up with its component along the view removed, or a
+/// null vector when the view is along the world up axis (at a pole).
+QVector3D levelUp(QVector3D const & world_up, QVector3D const & forward)
+{
+    QVector3D const level = world_up - QVector3D::dotProduct(world_up, forward) * forward;
+    return (level.length() > 1.0e-4f) ? level.normalized() : QVector3D();
+}
+
+} /* end namespace */
+
+void RCameraController::orbitAboutWorldUp(float yaw_deg, float pitch_deg)
+{
+    // Yaw about the world up axis and pitch about the screen right axis,
+    // turning the eye and the up axis together. Off a pole the up axis is
+    // then leveled, so the screen right axis stays horizontal. A pitch that
+    // carries the eye over a pole would turn the leveled up axis upside down
+    // against the turned one; it is dropped and only the yaw is kept.
+    QVector3D const offset = m_position - m_target;
+    QQuaternion const yaw = QQuaternion::fromAxisAndAngle(m_world_up, yaw_deg);
+    QQuaternion const pitch = QQuaternion::fromAxisAndAngle(rightAxis(), pitch_deg);
+    QQuaternion rot = yaw * pitch;
+    QVector3D turned = rot.rotatedVector(offset);
+    QVector3D up = rot.rotatedVector(m_up);
+    QVector3D level = levelUp(m_world_up, -turned.normalized());
+    if (!level.isNull() && QVector3D::dotProduct(level, up) < 0.0f)
+    {
+        turned = yaw.rotatedVector(offset);
+        up = yaw.rotatedVector(m_up);
+        level = levelUp(m_world_up, -turned.normalized());
+    }
+    m_position = m_target + turned;
+    m_up = level.isNull() ? up.normalized() : level;
 }
 
 void RCameraController::rotate(float dx, float dy)

@@ -75,7 +75,8 @@ public:
         bool depth_test = true,
         bool alpha_blend = false,
         int depth_bias = 0,
-        float slope_scaled_depth_bias = 0.0f) const;
+        float slope_scaled_depth_bias = 0.0f,
+        bool depth_write = true) const;
 
     /// Load a baked shader from the Qt resource system.
     static QShader loadShader(QString const & resource_path);

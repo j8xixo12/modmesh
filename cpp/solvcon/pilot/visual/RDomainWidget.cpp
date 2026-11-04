@@ -20,6 +20,7 @@
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPinchGesture>
+#include <QQuaternion>
 #include <QVector4D>
 #include <QWheelEvent>
 
@@ -363,12 +364,12 @@ void RDomainWidget::addObject(
     surface->setName(name);
     RDrawable * const drawable = surface.get();
     m_scene.addDrawable(std::move(surface));
-    m_objects[name] = ObjectEntry{drawable, mesh};
 
     m_scene.setDimension(mesh->ndim());
     QVector3D lo;
     QVector3D hi;
     mesh_bounds(*mesh, lo, hi);
+    m_objects[name] = ObjectEntry{drawable, mesh, lo, hi};
     if (mesh->nnode() > 0)
     {
         m_scene.extendBoundingBox(lo, hi);
@@ -384,7 +385,11 @@ void RDomainWidget::setObjectTransform(
     float tz,
     float sx,
     float sy,
-    float sz)
+    float sz,
+    float qw,
+    float qx,
+    float qy,
+    float qz)
 {
     auto const it = m_objects.find(name);
     if (it == m_objects.end())
@@ -393,13 +398,16 @@ void RDomainWidget::setObjectTransform(
     }
     QMatrix4x4 model;
     model.translate(tx, ty, tz);
+    model.rotate(QQuaternion(qw, qx, qy, qz).normalized());
     model.scale(sx, sy, sz);
     it->second.drawable->setModel(model);
 
     // Grow the framing box to include the transformed object corners.
-    QVector3D lo;
-    QVector3D hi;
-    mesh_bounds(*it->second.mesh, lo, hi);
+    bool const framed = m_scene.hasBoundingBox();
+    QVector3D const framed_lo = m_scene.boundingBoxLo();
+    QVector3D const framed_hi = m_scene.boundingBoxHi();
+    QVector3D const lo = it->second.lo;
+    QVector3D const hi = it->second.hi;
     for (int i = 0; i < 8; ++i)
     {
         QVector3D const corner(
@@ -409,7 +417,84 @@ void RDomainWidget::setObjectTransform(
         QVector3D const mapped = model.map(corner);
         m_scene.extendBoundingBox(mapped, mapped);
     }
-    m_scene.fitCameraToScene(viewportAspect());
+    bool const same_box = framed && framed_lo == m_scene.boundingBoxLo() && framed_hi == m_scene.boundingBoxHi();
+    if (!same_box)
+    {
+        m_scene.fitCameraToScene(viewportAspect());
+    }
+    update();
+}
+
+std::vector<float> RDomainWidget::objectModel(std::string const & name) const
+{
+    std::vector<float> values;
+    auto const it = m_objects.find(name);
+    if (it == m_objects.end())
+    {
+        return values;
+    }
+    QMatrix4x4 const model = it->second.drawable->model();
+    values.reserve(16);
+    for (int row = 0; row < 4; ++row)
+    {
+        for (int col = 0; col < 4; ++col)
+        {
+            values.push_back(model(row, col));
+        }
+    }
+    return values;
+}
+
+void RDomainWidget::setObjectSegments(
+    std::string const & name,
+    SimpleArray<float> const & points,
+    float r,
+    float g,
+    float b)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3 || points.shape(0) % 2 != 0)
+    {
+        throw std::invalid_argument("RDomainWidget: segment points must have shape (2 * nsegment, 3)");
+    }
+
+    auto const it = m_objects.find(name);
+    if (it != m_objects.end())
+    {
+        m_scene.removeDrawable(it->second.drawable);
+        m_objects.erase(it);
+    }
+    if (0 == points.shape(0))
+    {
+        update();
+        return;
+    }
+
+    size_t const npoint = static_cast<size_t>(points.shape(0));
+    std::vector<QVector3D> ends;
+    ends.reserve(npoint);
+    QVector3D lo(
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max());
+    QVector3D hi(
+        std::numeric_limits<float>::lowest(),
+        std::numeric_limits<float>::lowest(),
+        std::numeric_limits<float>::lowest());
+    for (size_t ipt = 0; ipt < npoint; ++ipt)
+    {
+        QVector3D const end(points(ipt, 0), points(ipt, 1), points(ipt, 2));
+        lo = QVector3D(std::min(lo.x(), end.x()), std::min(lo.y(), end.y()), std::min(lo.z(), end.z()));
+        hi = QVector3D(std::max(hi.x(), end.x()), std::max(hi.y(), end.y()), std::max(hi.z(), end.z()));
+        ends.push_back(end);
+    }
+
+    auto segments = std::make_unique<RSegments>(ends);
+    segments->setName(name);
+    segments->setColor(QVector4D(r, g, b, 1.0f));
+    RDrawable * const drawable = segments.get();
+    m_scene.addDrawable(std::move(segments));
+    m_objects[name] = ObjectEntry{drawable, nullptr, lo, hi};
+    m_scene.extendBoundingBox(lo, hi);
     update();
 }
 
@@ -429,6 +514,16 @@ void RDomainWidget::setObjectOpacity(std::string const & name, float opacity)
     if (it != m_objects.end())
     {
         it->second.drawable->setOpacity(opacity);
+        update();
+    }
+}
+
+void RDomainWidget::setObjectColor(std::string const & name, float r, float g, float b)
+{
+    auto const it = m_objects.find(name);
+    if (it != m_objects.end())
+    {
+        it->second.drawable->setColor(QVector4D(r, g, b, 1.0f));
         update();
     }
 }
@@ -1755,7 +1850,7 @@ void RDomainWidget::resetCamera()
 
 void RDomainWidget::setNavigationMapping(std::string const & name)
 {
-    if ("default" == name || "blender" == name)
+    if ("default" == name || "blender" == name || "cad" == name)
     {
         m_nav_mapping = name;
     }
@@ -1764,6 +1859,65 @@ void RDomainWidget::setNavigationMapping(std::string const & name)
 std::string RDomainWidget::navigationMapping() const
 {
     return m_nav_mapping;
+}
+
+void RDomainWidget::setWorldUp(QVector3D const & up)
+{
+    m_scene.camera().setWorldUp(up);
+}
+
+QVector3D RDomainWidget::worldUp() const
+{
+    return m_scene.camera().worldUp();
+}
+
+std::vector<float> RDomainWidget::projectPoint(float x, float y, float z) const
+{
+    // Without the backend clip-space correction, so the result is in the
+    // OpenGL convention: device y up, which flips to the widget y down.
+    QMatrix4x4 const vp = m_scene.viewProjection(size(), nullptr);
+    QVector4D const clip = vp * QVector4D(x, y, z, 1.0f);
+    if (0.0f == clip.w())
+    {
+        return {};
+    }
+    float const nx = clip.x() / clip.w();
+    float const ny = clip.y() / clip.w();
+    float const nz = clip.z() / clip.w();
+    return {0.5f * (nx + 1.0f) * static_cast<float>(width()),
+            0.5f * (1.0f - ny) * static_cast<float>(height()),
+            nz};
+}
+
+void RDomainWidget::zoomAt(float px, float py, float steps)
+{
+    RCameraController & camera = m_scene.camera();
+    QVector3D const target = camera.target();
+    float const before = (camera.position() - target).length();
+    if (RCameraController::Mode::Orbit != camera.mode() || 3 != m_scene.dimension() || before <= 0.0f ||
+        width() <= 0 || height() <= 0)
+    {
+        camera.zoom(steps);
+        update();
+        return;
+    }
+    // The point of the target plane under the pixel, from the extent the
+    // view spans at the target (the same for both projections).
+    float const half_h = m_scene.visibleHalfHeight();
+    float const half_w = half_h * viewportAspect();
+    float const nx = 2.0f * px / static_cast<float>(width()) - 1.0f;
+    float const ny = 1.0f - 2.0f * py / static_cast<float>(height());
+    QVector3D const right = camera.screenRight();
+    QVector3D const screen_up = QVector3D::crossProduct(right, camera.viewDirection()).normalized();
+    QVector3D const point = target + right * (nx * half_w) + screen_up * (ny * half_h);
+    camera.zoom(steps);
+    float const after = (camera.position() - target).length();
+    // The view shrinks about the target by after / before; moving the target
+    // and the eye toward the point by the rest keeps the point in place.
+    QVector3D const shift = (point - target) * (1.0f - after / before);
+    camera.setTarget(target + shift);
+    camera.setPosition(camera.position() + shift);
+    update();
 }
 
 void RDomainWidget::setOrbitSensitivity(float factor)
@@ -1895,6 +2049,34 @@ void RDomainWidget::mousePressEvent(QMouseEvent * event)
             m_drag_action = DragAction::Pan;
         }
     }
+    else if ("cad" == m_nav_mapping)
+    {
+        // CAD mapping: middle orbits, Ctrl+middle pans, Shift+middle zooms,
+        // right pans; left is left to the application (selection).
+        if (Qt::MiddleButton == btn)
+        {
+            if (mods & Qt::ControlModifier)
+            {
+                m_drag_action = DragAction::Pan;
+            }
+            else if (mods & Qt::ShiftModifier)
+            {
+                m_drag_action = DragAction::Zoom;
+            }
+            else
+            {
+                m_drag_action = DragAction::Rotate;
+            }
+        }
+        else if (Qt::RightButton == btn)
+        {
+            m_drag_action = DragAction::Pan;
+        }
+        else
+        {
+            m_drag_action = DragAction::Inert;
+        }
+    }
     else
     {
         // Default mapping: left rotates, other buttons pan.
@@ -1923,6 +2105,8 @@ void RDomainWidget::mouseMoveEvent(QMouseEvent * event)
         // Dragging up zooms in; scale the pixel delta to wheel-notch units.
         m_scene.camera().zoom(-dy * 0.05f);
         break;
+    case DragAction::Inert:
+        return;
     default:
         m_scene.camera().rotate(dx, dy);
         break;
@@ -1939,6 +2123,12 @@ void RDomainWidget::wheelEvent(QWheelEvent * event)
 {
     // One wheel notch is 120 eighths of a degree.
     float const steps = static_cast<float>(event->angleDelta().y()) / 120.0f;
+    if (m_zoom_to_cursor)
+    {
+        QPointF const pos = event->position();
+        zoomAt(static_cast<float>(pos.x()), static_cast<float>(pos.y()), steps);
+        return;
+    }
     m_scene.camera().zoom(steps);
     update();
 }
@@ -2170,9 +2360,17 @@ void RDomainWidget::render(QRhiCommandBuffer * cb)
     cb->beginPass(renderTarget(), clear_color, ds_clear, batch);
     cb->setViewport(QRhiViewport(
         0, 0, float(pixel_size.width()), float(pixel_size.height())));
-    for (std::unique_ptr<RDrawable> const & drawable : m_scene.drawables())
+    // Opaque drawables first, so the translucent ones (drawn without depth
+    // writes) blend over everything behind them.
+    for (bool const translucent : {false, true})
     {
-        drawable->draw(cb);
+        for (std::unique_ptr<RDrawable> const & drawable : m_scene.drawables())
+        {
+            if (drawable->translucent() == translucent)
+            {
+                drawable->draw(cb);
+            }
+        }
     }
     m_gizmo.draw(cb);
     m_scalar_bar.draw(cb);

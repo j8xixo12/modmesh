@@ -29,8 +29,23 @@ void RDrawable::prepare(
     int sample_count,
     QRhiResourceUpdateBatch * batch)
 {
+    if (m_ready && !m_pipeline_stale)
+    {
+        return;
+    }
     if (m_ready)
     {
+        // Only the translucency changed: rebuild the pipeline over the
+        // same buffers and bindings.
+        m_pipeline.reset(m_material->buildPipeline(
+            rhi, m_srb.get(), rpdesc, vertexInputLayout(), topology(), sample_count,
+            /*depth_test*/ true,
+            /*alpha_blend*/ true,
+            depthBias(),
+            slopeScaledDepthBias(),
+            /*depth_write*/ !translucent()));
+        m_pipeline_stale = false;
+        m_ready = (nullptr != m_pipeline);
         return;
     }
 
@@ -62,7 +77,9 @@ void RDrawable::prepare(
         /*depth_test*/ true,
         /*alpha_blend*/ true,
         depthBias(),
-        slopeScaledDepthBias()));
+        slopeScaledDepthBias(),
+        /*depth_write*/ !translucent()));
+    m_pipeline_stale = false;
     m_ready = (nullptr != m_pipeline);
 }
 

@@ -77,10 +77,19 @@ public:
     /// 1 is fully opaque, 0 fully transparent. Clamped to the range.
     void setOpacity(float opacity)
     {
+        bool const was_translucent = translucent();
         m_opacity = (opacity < 0.0f) ? 0.0f : (opacity > 1.0f) ? 1.0f
                                                                : opacity;
+        // The depth write of the pipeline follows the translucency.
+        if (was_translucent != translucent())
+        {
+            m_pipeline_stale = true;
+        }
     }
     float opacity() const { return m_opacity; }
+    /// True below full opacity: drawn after the opaque drawables, without
+    /// depth writes.
+    bool translucent() const { return m_opacity < 1.0f; }
 
     /// Create the device resources if they do not exist yet. Idempotent.
     void prepare(
@@ -141,6 +150,7 @@ protected:
     QMatrix4x4 m_model; ///< Per-object model transform (identity by default).
     std::string m_name; ///< Optional name for the scene registry.
     float m_opacity = 1.0f;
+    bool m_pipeline_stale = false;
     bool m_visible = true;
 
     std::unique_ptr<QRhiBuffer> m_vbuf;

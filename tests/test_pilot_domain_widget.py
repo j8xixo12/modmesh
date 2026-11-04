@@ -1247,6 +1247,155 @@ class RDomainWidgetViewPresetTC(unittest.TestCase):
 
 
 @testing.requires_pilot
+class RDomainWidgetNavigationTC(unittest.TestCase):
+    """A world up axis for the turntable, screen projection of a point, and
+    zoom toward the cursor, as a vehicle app (z up) needs them."""
+
+    @classmethod
+    def setUpClass(cls):
+        pilot.RManager.instance.setUp()
+
+    @staticmethod
+    def _widget():
+        widget = pilot.RDomainWidget()
+        widget.resize(400, 300)
+        widget.updateMesh(_make_3d_mesh())
+        widget.cameraMode = "orbit"
+        widget.fitCameraToScene()
+        return widget
+
+    @staticmethod
+    def _frame(widget):
+        import numpy as np
+        pos = np.array(widget.cameraPosition, dtype='float64')
+        target = np.array(widget.cameraTarget, dtype='float64')
+        up = np.array(widget.cameraUp, dtype='float64')
+        forward = (target - pos) / np.linalg.norm(target - pos)
+        right = np.cross(forward, up)
+        right /= np.linalg.norm(right)
+        return pos, target, up, forward, right
+
+    def test_world_up_round_trip(self):
+        widget = self._widget()
+        self.assertEqual((0.0, 0.0, 0.0), tuple(widget.worldUp))
+        widget.worldUp = (0.0, 0.0, 2.0)
+        self.assertEqual((0.0, 0.0, 1.0), tuple(widget.worldUp))
+        widget.worldUp = (0.0, 0.0, 0.0)
+        self.assertEqual((0.0, 0.0, 0.0), tuple(widget.worldUp))
+
+    def test_turntable_about_world_up_keeps_the_horizon_level(self):
+        """With a world up axis, a turntable drag from any view keeps the
+        screen right axis horizontal and the screen up axis above the
+        horizon, so the scene never rolls."""
+        import numpy as np
+        widget = self._widget()
+        widget.worldUp = (0.0, 0.0, 1.0)
+        widget.cameraPosition = (3.0, -2.0, 1.0)
+        widget.cameraTarget = (0.0, 0.0, 0.0)
+        widget.cameraUp = (0.3, 0.1, 1.0)  # not level on purpose
+        for dx, dy in ((40.0, 0.0), (0.0, 25.0), (-70.0, -45.0),
+                       (10.0, 60.0)):
+            widget.rotateCamera(dx, dy)
+            pos, target, up, forward, right = self._frame(widget)
+            self.assertAlmostEqual(0.0, right[2], places=5)
+            self.assertGreater(up[2], 0.0)
+            self.assertAlmostEqual(0.0, float(up @ forward), places=5)
+            self.assertAlmostEqual(np.linalg.norm([3.0, -2.0, 1.0]),
+                                   np.linalg.norm(pos - target), places=4)
+
+    def test_turntable_from_the_top_view(self):
+        """From the top view (eye on +z, screen up +x) a yaw spins the view
+        about z, a tilt one way leaves the pole with a level horizon, and a
+        tilt past the pole is refused."""
+        import numpy as np
+        widget = self._widget()
+        widget.worldUp = (0.0, 0.0, 1.0)
+        widget.cameraTarget = (0.0, 0.0, 0.0)
+        widget.cameraPosition = (0.0, 0.0, 5.0)
+        widget.cameraUp = (1.0, 0.0, 0.0)
+        widget.orbitStep(30.0, 0.0)
+        pos, _, up, _, _ = self._frame(widget)
+        np.testing.assert_allclose([0.0, 0.0, 5.0], pos, atol=1.e-5)
+        np.testing.assert_allclose(
+            [np.cos(np.radians(30.0)), np.sin(np.radians(30.0)), 0.0], up,
+            atol=1.e-5)
+        widget.cameraUp = (1.0, 0.0, 0.0)
+        widget.orbitStep(0.0, -20.0)
+        refused = self._frame(widget)[0]
+        widget.orbitStep(0.0, 20.0)
+        left = self._frame(widget)[0]
+        # Exactly one of the two tilts leaves the pole.
+        moved = [np.linalg.norm(p - [0.0, 0.0, 5.0]) > 1.e-3
+                 for p in (refused, left)]
+        self.assertEqual(1, sum(moved))
+        pos, _, up, forward, right = self._frame(widget)
+        self.assertAlmostEqual(0.0, right[2], places=5)
+        self.assertGreater(up[0], 0.0)  # the screen up stays forward (+x)
+
+    def test_project_point(self):
+        """The target projects to the widget center; a point on the screen
+        right and up axes projects right of and above it, by the same
+        amount in both projections at the target plane."""
+        import numpy as np
+        widget = self._widget()
+        widget.cameraPosition = (0.0, -6.0, 0.0)
+        widget.cameraTarget = (0.0, 0.0, 0.0)
+        widget.cameraUp = (0.0, 0.0, 1.0)
+        for projection in ("perspective", "parallel"):
+            widget.projection = projection
+            px, py, _ = widget.projectPoint(0.0, 0.0, 0.0)
+            self.assertAlmostEqual(200.0, px, places=3)
+            self.assertAlmostEqual(150.0, py, places=3)
+            px, py, _ = widget.projectPoint(1.0, 0.0, 0.5)
+            half = 6.0 * np.tan(np.radians(22.5))
+            # 400 x 300 pixels: half width 200 px spans half * 4 / 3.
+            self.assertAlmostEqual(200.0 + 150.0 / half, px, places=2)
+            self.assertAlmostEqual(150.0 * (1.0 - 0.5 / half), py, places=2)
+
+    def test_parallel_projection_zooms(self):
+        """The wheel zooms a 3D parallel projection too: the eye distance
+        sets the size of the orthographic box."""
+        widget = self._widget()
+        widget.projection = "parallel"
+        x0 = widget.projectPoint(*widget.cameraTarget)[0]
+        pos, target, _, _, right = self._frame(widget)
+        point = target + 0.2 * right
+        before = widget.projectPoint(*point)[0] - x0
+        widget.zoomCamera(3.0)
+        after = widget.projectPoint(*point)[0] - x0
+        self.assertGreater(after, 1.2 * before)
+
+    def test_zoom_at_keeps_the_point_under_the_cursor(self):
+        import numpy as np
+        for projection in ("perspective", "parallel"):
+            widget = self._widget()
+            widget.projection = projection
+            pos, target, up, forward, right = self._frame(widget)
+            screen_up = np.cross(right, forward)
+            point = target + 0.3 * right - 0.2 * screen_up
+            px, py, _ = widget.projectPoint(*point)
+            distance = np.linalg.norm(pos - target)
+            widget.zoomAt(px, py, 2.0)
+            qx, qy, _ = widget.projectPoint(*point)
+            self.assertAlmostEqual(px, qx, places=2)
+            self.assertAlmostEqual(py, qy, places=2)
+            new_pos = np.array(widget.cameraPosition)
+            new_target = np.array(widget.cameraTarget)
+            self.assertLess(np.linalg.norm(new_pos - new_target), distance)
+
+    def test_cad_mapping_round_trip(self):
+        widget = self._widget()
+        widget.navigationMapping = "cad"
+        self.assertEqual("cad", widget.navigationMapping)
+
+    def test_zoom_to_cursor_round_trip(self):
+        widget = self._widget()
+        self.assertFalse(widget.zoomToCursor)
+        widget.zoomToCursor = True
+        self.assertTrue(widget.zoomToCursor)
+
+
+@testing.requires_pilot
 class RDomainWidgetTrackballTC(unittest.TestCase):
     """Trackball orbit style and orbit pivot control."""
 
@@ -1593,6 +1742,122 @@ class RDomainWidgetSceneObjectsTC(unittest.TestCase):
         one_widget.setObjectVisible("b", False)
         one = _count_foreground(_grab_or_skip(one_widget))
         self.assertLess(one, both)
+
+    @staticmethod
+    def _model(widget, name):
+        import numpy as np
+        return np.array(widget.objectModel(name),
+                        dtype='float64').reshape(4, 4)
+
+    def test_transform_rotates_by_quaternion(self):
+        """A body pose from the Euler parameters of a multibody solver: the
+        quaternion turns the object about the origin of its own frame before
+        the translation, and the scale applies along its own axes."""
+        import numpy as np
+        widget = pilot.RDomainWidget()
+        widget.addObject("a", _make_3d_mesh())
+        half = math.sqrt(0.5)
+        # A quarter turn about z, after a stretch along the object x axis.
+        widget.setObjectTransform("a", 1.0, 2.0, 3.0, 2.0, 1.0, 1.0,
+                                  half, 0.0, 0.0, half)
+        np.testing.assert_allclose(
+            self._model(widget, "a"),
+            [[0.0, -1.0, 0.0, 1.0], [2.0, 0.0, 0.0, 2.0],
+             [0.0, 0.0, 1.0, 3.0], [0.0, 0.0, 0.0, 1.0]], atol=1.e-6)
+        # A quaternion off the unit sphere still is a pure rotation.
+        widget.setObjectTransform("a", 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+                                  2.0, 0.0, 0.0, 0.0)
+        np.testing.assert_allclose(self._model(widget, "a"), np.eye(4),
+                                   atol=1.e-6)
+
+    def test_transform_without_rotation_keeps_translate_and_scale(self):
+        """The rotation defaults to none, so a translate-and-scale caller
+        gets the transform it had before the rotation was added."""
+        import numpy as np
+        widget = pilot.RDomainWidget()
+        widget.addObject("a", _make_3d_mesh())
+        widget.setObjectTransform("a", 3.0, 0.0, 0.0, 1.0, 2.0, 1.0)
+        np.testing.assert_allclose(
+            self._model(widget, "a"),
+            [[1.0, 0.0, 0.0, 3.0], [0.0, 2.0, 0.0, 0.0],
+             [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+        self.assertEqual([], widget.objectModel("nope"))
+
+    def test_steady_transform_keeps_the_camera(self):
+        """An object driven frame after frame inside the framed box leaves
+        the camera where the user put it; one that leaves the box reframes.
+        """
+        widget = pilot.RDomainWidget()
+        widget.resize(320, 240)
+        widget.addObject("a", _make_3d_mesh())
+        half = math.sqrt(0.5)
+
+        def sweep():
+            widget.setObjectTransform("a", 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+                                      half, half, 0.0, 0.0)
+            widget.setObjectTransform("a", 0.0, 0.0, 0.0)
+
+        # The first pass grows the box to hold both poses.
+        sweep()
+        moved = (5.0, -4.0, 3.0)
+        widget.cameraPosition = moved
+        sweep()
+        for want, got in zip(moved, tuple(widget.cameraPosition)):
+            self.assertAlmostEqual(want, got, places=5)
+        widget.setObjectTransform("a", 50.0, 0.0, 0.0)
+        self.assertNotAlmostEqual(moved[0], widget.cameraPosition[0],
+                                  places=2)
+
+    @staticmethod
+    def _segment_points(points):
+        import numpy as np
+        return solvcon.core.SimpleArrayFloat32(
+            array=np.array(points, dtype='float32'))
+
+    def test_segments_register_replace_and_remove(self):
+        """Line segments are a named object like a mesh: set again, they
+        replace the old ones; an empty table removes them; and the setters
+        reach them by name."""
+        widget = pilot.RDomainWidget()
+        widget.addObject("body", _make_3d_mesh())
+        links = self._segment_points([(0, 0, 0), (1, 1, 1),
+                                      (0, 1, 0), (1, 0, 1)])
+        widget.setObjectSegments("links", links, 0.2, 0.2, 0.2)
+        widget.setObjectSegments("links", links, 1.0, 0.0, 0.0)
+        self.assertEqual(["body", "links"], sorted(widget.objectNames()))
+        widget.setObjectVisible("links", False)
+        widget.setObjectTransform("links", 1.0, 0.0, 0.0)
+        self.assertEqual(1.0, self._model(widget, "links")[0, 3])
+        empty = solvcon.core.SimpleArrayFloat32((0, 3))
+        widget.setObjectSegments("links", empty)
+        self.assertEqual(["body"], widget.objectNames())
+
+    def test_segments_reject_unpaired_ends(self):
+        """A segment needs two ends of three coordinates each."""
+        widget = pilot.RDomainWidget()
+        with self.assertRaisesRegex(ValueError, r"\(2 \* nsegment, 3\)"):
+            widget.setObjectSegments(
+                "bad", self._segment_points([(0, 0, 0), (1, 1, 1),
+                                             (2, 2, 2)]))
+        with self.assertRaisesRegex(ValueError, r"\(2 \* nsegment, 3\)"):
+            widget.setObjectSegments(
+                "bad", self._segment_points([(0, 0), (1, 1)]))
+        self.assertEqual([], widget.objectNames())
+
+    def test_segments_render(self):
+        """Segments over a mesh draw pixels the mesh alone does not."""
+        def build(with_segments):
+            widget = pilot.RDomainWidget()
+            widget.resize(320, 240)
+            widget.addObject("body", _make_3d_mesh())
+            if with_segments:
+                widget.setObjectSegments(
+                    "links", self._segment_points(
+                        [(-1, 0, 0), (0, 1, 1), (-1, 1, 0), (0, 0, 1)]),
+                    0.9, 0.1, 0.1)
+            return _count_foreground(_grab_or_skip(widget))
+
+        self.assertGreater(build(True), build(False))
 
 
 @testing.requires_pilot

@@ -132,6 +132,20 @@ public:
     QVector3D up() const { return m_up; }
     void setUp(QVector3D const & up) { m_up = up; }
 
+    /**
+     * Set the world up axis of the turntable. With a world up axis, the
+     * turntable yaws about it and keeps the screen right axis horizontal, so
+     * a z-up scene never rolls, from any view including straight down. A zero
+     * vector clears it: the turntable then yaws about the camera up axis.
+     */
+    void setWorldUp(QVector3D const & up) { m_world_up = up.isNull() ? QVector3D() : up.normalized(); }
+    QVector3D worldUp() const { return m_world_up; }
+
+    /// The view direction (unit, from the eye toward the target).
+    QVector3D viewDirection() const { return forward(); }
+    /// The screen right axis (unit).
+    QVector3D screenRight() const { return rightAxis(); }
+
 private:
 
     QVector3D forward() const;
@@ -140,6 +154,8 @@ private:
     /// turntable/trackball style. Shared by the drag rotate and the discrete
     /// step.
     void orbitBy(float yaw_deg, float pitch_deg);
+    /// The turntable orbit about the world up axis.
+    void orbitAboutWorldUp(float yaw_deg, float pitch_deg);
 
     Mode m_mode = Mode::Orbit; ///< Default; a 2D domain switches to PanZoom.
     OrbitStyle m_orbit_style = OrbitStyle::Turntable; ///< Default orbit style.
@@ -148,6 +164,7 @@ private:
     QVector3D m_position{0.0f, 0.0f, 1.0f};
     QVector3D m_target{0.0f, 0.0f, 0.0f};
     QVector3D m_up{0.0f, 1.0f, 0.0f};
+    QVector3D m_world_up; ///< Turntable axis; null for the camera up.
 
     float m_ortho_scale = 1.0f; ///< PanZoom zoom factor.
     float m_radius = 1.0f; ///< Scene scale, sets pan and dolly speeds.

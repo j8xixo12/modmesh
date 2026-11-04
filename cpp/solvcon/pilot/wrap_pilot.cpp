@@ -236,7 +236,28 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRDomainWidget
                 py::arg("sx") = 1.0f,
                 py::arg("sy") = 1.0f,
                 py::arg("sz") = 1.0f,
-                "Set a named object's translate and scale model transform.")
+                py::arg("qw") = 1.0f,
+                py::arg("qx") = 0.0f,
+                py::arg("qy") = 0.0f,
+                py::arg("qz") = 0.0f,
+                "Set a named object's model transform: scale, then rotate by "
+                "the quaternion (qw, qx, qy, qz), then translate.")
+            .def(
+                "objectModel",
+                &wrapped_type::objectModel,
+                py::arg("name"),
+                "The model transform of a named object as 16 row-major floats, "
+                "empty for an unknown name.")
+            .def(
+                "setObjectSegments",
+                &wrapped_type::setObjectSegments,
+                py::arg("name"),
+                py::arg("points"),
+                py::arg("r") = 0.0f,
+                py::arg("g") = 0.0f,
+                py::arg("b") = 0.0f,
+                "Register or replace a named object of line segments from a "
+                "(2 * nsegment, 3) float32 array of consecutive end pairs.")
             .def(
                 "setObjectVisible",
                 &wrapped_type::setObjectVisible,
@@ -247,6 +268,15 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRDomainWidget
                 &wrapped_type::setObjectOpacity,
                 py::arg("name"),
                 py::arg("opacity"))
+            .def(
+                "setObjectColor",
+                &wrapped_type::setObjectColor,
+                py::arg("name"),
+                py::arg("r"),
+                py::arg("g"),
+                py::arg("b"),
+                "Set the surface color of a named mesh object (components in "
+                "[0, 1]).")
             .def("objectNames", &wrapped_type::objectNames)
             .def("showMesh", &wrapped_type::showMesh, py::arg("show"))
             .def("setMeshOpacity", &wrapped_type::setMeshOpacity, py::arg("opacity"))
@@ -544,13 +574,56 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRDomainWidget
                 {
                     self.setNavigationMapping(name);
                 },
-                "Mouse navigation mapping: \"default\" (left rotates) or "
+                "Mouse navigation mapping: \"default\" (left rotates), "
                 "\"blender\" (middle orbits; Shift/Ctrl/Alt+middle pan/zoom/"
-                "pivot; Alt+left aliases middle).")
+                "pivot; Alt+left aliases middle), or \"cad\" (middle "
+                "orbits; Ctrl/Shift+middle pan/zoom; right pans; left does not "
+                "navigate).")
             .def(
                 "setNavigationMapping",
                 &wrapped_type::setNavigationMapping,
                 py::arg("name"))
+            .def_property(
+                "worldUp",
+                [](wrapped_type & self)
+                {
+                    QVector3D const v = self.worldUp();
+                    return py::make_tuple(v.x(), v.y(), v.z());
+                },
+                [](wrapped_type & self, std::vector<double> const & v)
+                {
+                    self.setWorldUp(QVector3D(v.at(0), v.at(1), v.at(2)));
+                },
+                "World up axis of the turntable orbit, e.g. (0, 0, 1) for a "
+                "z-up scene; (0, 0, 0) yaws about the camera up axis.")
+            .def(
+                "projectPoint",
+                [](wrapped_type & self, float x, float y, float z) -> py::tuple
+                {
+                    std::vector<float> const v = self.projectPoint(x, y, z);
+                    if (v.size() < 3)
+                    {
+                        return py::make_tuple();
+                    }
+                    return py::make_tuple(v[0], v[1], v[2]);
+                },
+                py::arg("x"),
+                py::arg("y"),
+                py::arg("z"),
+                "Project a world point to (x, y) widget pixels (y down) and "
+                "the normalized device depth.")
+            .def(
+                "zoomAt",
+                &wrapped_type::zoomAt,
+                py::arg("px"),
+                py::arg("py"),
+                py::arg("steps"),
+                "Zoom by wheel notches toward a widget pixel.")
+            .def_property(
+                "zoomToCursor",
+                &wrapped_type::zoomToCursor,
+                &wrapped_type::setZoomToCursor,
+                "Whether the wheel zooms toward the cursor.")
             .def(
                 "setOrbitSensitivity",
                 &wrapped_type::setOrbitSensitivity,

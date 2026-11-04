@@ -116,6 +116,10 @@ public:
     /// 2D domains use an orthographic projection, 3D domains a perspective
     /// one. @p rhi supplies the backend clip-space correction.
     QMatrix4x4 viewProjection(QSize pixel_size, QRhi * rhi) const;
+    /// Half the height the view spans in the plane of the camera target.
+    float visibleHalfHeight() const;
+    /// Whether the active projection is a perspective one.
+    bool usesPerspective() const;
 
 private:
 

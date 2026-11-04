@@ -115,6 +115,15 @@ public:
     // named, lit surface; the setters drive it by name (an unknown name is a
     // no-op).
     void addObject(std::string const & name, std::shared_ptr<StaticMesh> const & mesh);
+
+    /**
+     * Set the model transform of a named object: scale by (sx, sy, sz), then
+     * rotate by the quaternion (qw, qx, qy, qz), then translate by
+     * (tx, ty, tz). The quaternion is normalized, so the rotation of a rigid
+     * body is given by its Euler parameters directly. The camera is reframed
+     * only when the transform grows the framing box, so an object driven
+     * frame after frame does not undo the user's orbit.
+     */
     void setObjectTransform(
         std::string const & name,
         float tx,
@@ -122,9 +131,41 @@ public:
         float tz,
         float sx,
         float sy,
-        float sz);
+        float sz,
+        float qw = 1.0f,
+        float qx = 0.0f,
+        float qy = 0.0f,
+        float qz = 0.0f);
+
+    /// The model transform of a named object as 16 floats in row-major
+    /// order, or an empty vector for an unknown name.
+    std::vector<float> objectModel(std::string const & name) const;
+
+    /**
+     * Register (or replace) a named object of flat-colored line segments.
+     *
+     * @param name The object name, shared with the mesh objects.
+     * @param points The segment ends of shape (2 * nsegment, 3), drawn in
+     *     consecutive pairs.
+     * @param r The red channel in [0, 1].
+     * @param g The green channel in [0, 1].
+     * @param b The blue channel in [0, 1].
+     *
+     * The framing box grows to include the points, but the camera is not
+     * reframed, so the segments can be replaced every frame. An empty point
+     * table removes the object.
+     */
+    void setObjectSegments(
+        std::string const & name,
+        SimpleArray<float> const & points,
+        float r,
+        float g,
+        float b);
+
     void setObjectVisible(std::string const & name, bool visible);
     void setObjectOpacity(std::string const & name, float opacity);
+    /// Set the surface color (r, g, b in [0, 1]) of a named mesh object.
+    void setObjectColor(std::string const & name, float r, float g, float b);
     std::vector<std::string> objectNames() const;
 
     /// Show or hide the mesh, in whatever representation is active.
@@ -291,11 +332,33 @@ public:
     void resetCamera();
 
     /// Choose the mouse navigation mapping: "default" (left rotates, other
-    /// buttons pan) or "blender" (middle orbits; Shift+middle pans;
+    /// buttons pan), "blender" (middle orbits; Shift+middle pans;
     /// Ctrl+middle zooms; Alt+middle recenters the pivot; Alt+left aliases the
-    /// middle button for trackpads without one).
+    /// middle button for trackpads without one), or "cad" (the SolidWorks
+    /// convention: middle orbits, Ctrl+middle pans, Shift+middle zooms, right
+    /// pans, and left does not navigate so it can select).
     void setNavigationMapping(std::string const & name);
     std::string navigationMapping() const;
+
+    /// Set the world up axis of the turntable orbit, (0, 0, 1) for a z-up
+    /// scene; a zero vector restores the camera-up turntable.
+    void setWorldUp(QVector3D const & up);
+    QVector3D worldUp() const;
+
+    /**
+     * Project a world point to the widget: the pixel (x right, y down, in
+     * logical pixels as the mouse events give them) and the normalized
+     * device depth in [-1, 1] (inside the view volume).
+     */
+    std::vector<float> projectPoint(float x, float y, float z) const;
+
+    /// Zoom by @p steps wheel notches toward the widget pixel (px, py): the
+    /// point of the target plane under that pixel stays under it.
+    void zoomAt(float px, float py, float steps);
+
+    /// Make the wheel zoom toward the cursor instead of the view center.
+    void setZoomToCursor(bool on) { m_zoom_to_cursor = on; }
+    bool zoomToCursor() const { return m_zoom_to_cursor; }
 
     /// Scale the orbit/look speed for drags.
     void setOrbitSensitivity(float factor);
@@ -439,12 +502,15 @@ private:
     RDrawable * m_clip = nullptr; ///< The clipped surface drawable.
     RDrawable * m_slice = nullptr; ///< The slice cross-section outline.
 
-    /// A named scene object: its drawable (owned by the scene) and its mesh,
-    /// kept so a transform can re-extend the framing box.
+    /// A named scene object: its drawable (owned by the scene), its mesh
+    /// (null for line segments), and its untransformed bounds, kept so a
+    /// transform can re-extend the framing box.
     struct ObjectEntry
     {
         RDrawable * drawable = nullptr;
         std::shared_ptr<StaticMesh> mesh;
+        QVector3D lo;
+        QVector3D hi;
     }; /* end struct ObjectEntry */
     std::map<std::string, ObjectEntry> m_objects;
     std::vector<float> m_ticks_x; ///< Cube-axes tick coordinates per axis.
@@ -472,6 +538,7 @@ private:
     bool m_transparent_capture = false; ///< Clear alpha 0 for a capture.
 
     QPoint m_last_mouse_pos; ///< Last cursor position during a drag.
+    bool m_zoom_to_cursor = false; ///< The wheel zooms toward the cursor.
 
     /// What the current drag does, chosen at press time from the button and
     /// modifiers through the active navigation mapping.
@@ -480,9 +547,10 @@ private:
         Rotate,
         Pan,
         Zoom,
+        Inert, ///< The drag does not navigate (a CAD left button selects).
     };
     DragAction m_drag_action = DragAction::Rotate;
-    std::string m_nav_mapping = "blender"; ///< "default" or "blender".
+    std::string m_nav_mapping = "blender"; ///< "default", "blender", or "cad".
 
 }; /* end class RDomainWidget */
 

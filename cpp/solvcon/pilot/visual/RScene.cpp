@@ -205,6 +205,28 @@ void RScene::setViewPreset(std::string const & name, float aspect)
     m_camera.setUp(up.normalized());
 }
 
+float RScene::visibleHalfHeight() const
+{
+    float distance = (m_camera.position() - m_camera.target()).length();
+    if (distance <= 0.0f)
+    {
+        distance = 2.0f * framingRadius();
+    }
+    float const half_v = FOV_DEGREES * 0.5f * 3.14159265358979323846f / 180.0f;
+    float half_h = distance * std::tan(half_v);
+    if (Projection::Parallel == m_projection && 3 == m_ndim)
+    {
+        half_h *= m_camera.orthoScale();
+    }
+    return half_h;
+}
+
+bool RScene::usesPerspective() const
+{
+    return (Projection::Perspective == m_projection) ||
+           (Projection::Auto == m_projection && 3 == m_ndim);
+}
+
 QMatrix4x4 RScene::viewProjection(QSize pixel_size, QRhi * rhi) const
 {
     QMatrix4x4 clip = (nullptr != rhi) ? rhi->clipSpaceCorrMatrix() : QMatrix4x4();
@@ -223,9 +245,7 @@ QMatrix4x4 RScene::viewProjection(QSize pixel_size, QRhi * rhi) const
         distance = 2.0f * radius;
     }
 
-    bool const use_perspective =
-        (Projection::Perspective == m_projection) ||
-        (Projection::Auto == m_projection && 3 == m_ndim);
+    bool const use_perspective = usesPerspective();
 
     QMatrix4x4 proj;
     if (use_perspective)
@@ -234,18 +254,31 @@ QMatrix4x4 RScene::viewProjection(QSize pixel_size, QRhi * rhi) const
     }
     else
     {
-        // The orthographic box is sized around the bounding sphere for the
-        // viewport aspect, scaled by the camera's zoom factor.
-        float const margin = radius * 1.1f * m_camera.orthoScale();
-        float half_w = margin;
-        float half_h = margin;
-        if (aspect >= 1.0f)
+        float half_w = 0.0f;
+        float half_h = 0.0f;
+        if (3 == m_ndim)
         {
-            half_w = margin * aspect;
+            // A 3D parallel view spans what the perspective one spans at the
+            // target, so the wheel (which moves the eye) zooms it and the
+            // projection toggle keeps the size.
+            half_h = visibleHalfHeight();
+            half_w = half_h * aspect;
         }
         else
         {
-            half_h = margin / aspect;
+            // The orthographic box is sized around the bounding sphere for
+            // the viewport aspect, scaled by the camera's zoom factor.
+            float const margin = radius * 1.1f * m_camera.orthoScale();
+            half_w = margin;
+            half_h = margin;
+            if (aspect >= 1.0f)
+            {
+                half_w = margin * aspect;
+            }
+            else
+            {
+                half_h = margin / aspect;
+            }
         }
         proj.ortho(-half_w, half_w, -half_h, half_h, 0.01f * radius, distance + 3.0f * radius);
     }
