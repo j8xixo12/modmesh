@@ -1,0 +1,284 @@
+{
+  "book": "Rui, Wang, Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2018",
+  "section": "4.2-4.7",
+  "extraction": "pdftotext text layer; Tables 4.1, 4.5, 4.6 and Eq. (4.82), (4.139) checked on the rendered pages (PDF page = book page + 32). Fig. 4.13 and 4.15 read from the rendered pages 160-161 (PDF 192-193): z axis grid 3 mm (Fig. 4.13) and 0.5 mm (Fig. 4.15), t axis ticks 15 ms and 10 ms.",
+  "tolerance_rule": "One unit in the last printed digit.",
+  "examples": {
+    "4.1": {
+      "page": 139,
+      "data": {
+        "m": [
+          1.0,
+          1.63,
+          1.0
+        ],
+        "k": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "c": [
+          0.001,
+          0.001,
+          0.001
+        ],
+        "eps": [
+          0.001,
+          0.001,
+          0.001
+        ],
+        "F": [
+          0.0,
+          0.0,
+          0.1
+        ]
+      },
+      "omega": [
+        0.402,
+        1.206,
+        1.616
+      ],
+      "note": "Response curves Fig. 4.3-4.4 are figures only; the book check (numerical integration) is repeated with its own data in the tests."
+    },
+    "4.2": {
+      "page": 151,
+      "table": "4.1",
+      "note": "Mesh of the four strips (number of elements per strip) is not given, so the FE-TMM columns are not reproducible. Boundary groups (rendered figure): 1 SSSS, 2 x=0 clamped and the other edges simply supported, 3 y=0,b clamped and x=0,a free, 4 two adjacent edges clamped.",
+      "lambda_def": "omega = lambda / l^2 sqrt(E h^2 / (12 rho (1 - mu^2)))",
+      "ssss_reference": [
+        [
+          19.72,
+          49.3,
+          98.6
+        ],
+        [
+          49.3,
+          78.88,
+          128.1
+        ],
+        [
+          98.6,
+          128.1,
+          177.48
+        ],
+        [
+          167.88,
+          197.2,
+          246.4
+        ]
+      ],
+      "ssss_index_note": "rows i = 1..4 (x), columns j = 1..3 (y); exact lambda = pi^2 (i^2 + j^2)",
+      "csss_reference": [
+        [
+          23.65,
+          51.95,
+          101.2
+        ],
+        [
+          58.65,
+          86.3,
+          134.2
+        ],
+        [
+          113.2,
+          140.8,
+          188.1
+        ],
+        [
+          187.8,
+          215.5,
+          262.8
+        ]
+      ],
+      "csss_fe_tmm": [
+        [
+          23.65,
+          51.69,
+          100.31
+        ],
+        [
+          58.77,
+          86.27,
+          134.04
+        ],
+        [
+          114.27,
+          141.86,
+          189.44
+        ],
+        [
+          193.02,
+          219.49,
+          271.66
+        ]
+      ]
+    },
+    "4.6": {
+      "page": 179,
+      "table": "4.5",
+      "unit": "rad/s",
+      "data": {
+        "a": 1.0,
+        "b": 1.0,
+        "h": 0.002,
+        "E": 200000000000.0,
+        "G": 80000000000.0,
+        "mu": 0.25,
+        "rho": 7800.0,
+        "m": 8,
+        "n": 8,
+        "beta": 0.333
+      },
+      "tmm": [
+        [
+          65.19,
+          153.29,
+          288.29
+        ],
+        [
+          153.29,
+          245.61,
+          378.56
+        ],
+        [
+          288.29,
+          378.56,
+          507.14
+        ]
+      ],
+      "analytical": [
+        [
+          59.6,
+          149.0,
+          298.0
+        ],
+        [
+          149.0,
+          238.4,
+          387.4
+        ],
+        [
+          298.0,
+          387.4,
+          536.41
+        ]
+      ],
+      "index_note": "rows j = 1..3, columns i = 1..3",
+      "reproduction": "Reproduced with beta = 0.3333 (printed 0.333) and the rotary inertia of Eq. (4.168)."
+    },
+    "4.7": {
+      "page": 180,
+      "table": "4.6",
+      "unit": "rad/s",
+      "data": {
+        "a": 1.0,
+        "b": 0.5,
+        "h": 0.002,
+        "E": 200000000000.0,
+        "G": 80000000000.0,
+        "mu": 0.25,
+        "rho": 7800.0,
+        "m": 5,
+        "n": 8,
+        "beta": 0.333,
+        "bc": "x = 0, a clamped; y = 0, b simply supported"
+      },
+      "tmm": [
+        [
+          174.65,
+          303.32,
+          483.91
+        ],
+        [
+          519.75,
+          637.6,
+          806.86
+        ],
+        [
+          1086.56,
+          1241.08,
+          1315.15
+        ],
+        [
+          1947.21,
+          2005.7,
+          2185.04
+        ]
+      ],
+      "reference_239": [
+        [
+          166.67,
+          286.24,
+          467.4
+        ],
+        [
+          517.22,
+          623.81,
+          800.75
+        ],
+        [
+          1107.52,
+          1210.48,
+          1381.08
+        ],
+        [
+          1940.87,
+          2040.82,
+          2205.68
+        ]
+      ],
+      "index_note": "rows j = 1..4, columns i = 1..3",
+      "reproduction": "All 12 TMM values reproduced with beta = 0.3333 and WITHOUT the rotary inertia J_x, J_y (Example 4.6 includes it)."
+    },
+    "4.4": {
+      "page": 159,
+      "figure": "4.13",
+      "data": {
+        "a": 2.44,
+        "h": 0.00635,
+        "rho": 2524.0,
+        "E": 68950000000.0,
+        "mu": 0.23,
+        "p": 479.0,
+        "quarter_mesh": [
+          6,
+          8
+        ],
+        "dt": 0.0015
+      },
+      "fig_reading": {
+        "peak_mm": 13.5,
+        "peak_mm_tol": 0.5,
+        "peak_time_ms": 30.0,
+        "peak_time_tol_ms": 2.0,
+        "zero_time_ms": 60.0,
+        "zero_time_tol_ms": 2.0
+      },
+      "note": "Edges clamped and immovable in plane (assumption: the book does not state the in-plane condition). Element type of the book is not given; this module uses the 9-DOF triangle plus CST membrane."
+    },
+    "4.5": {
+      "page": 160,
+      "figure": "4.15",
+      "data": {
+        "EA": 11000000.0,
+        "EI_y": 9.0,
+        "EI_z": 40.0,
+        "stiffeners_x": 7,
+        "stiffeners_y": 5,
+        "quarter_mesh": [
+          4,
+          6
+        ],
+        "beam_elements": 24,
+        "dt": 0.002
+      },
+      "fig_reading": {
+        "peak_mm": 2.65,
+        "peak_mm_tol": 0.1,
+        "peak_time_ms": 20.0,
+        "peak_time_tol_ms": 1.5
+      },
+      "note": "Not reproduced: with the printed stiffener data (concentric, EA and EI_y out-of-plane, both families) the peak is 12.9 mm at 28.8 ms. The 24 beam elements of the quarter match only the 7 stiffeners parallel to x (4 lines x 6 elements); the 5 stiffeners parallel to y would add 12."
+    }
+  }
+}

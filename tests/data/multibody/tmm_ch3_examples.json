@@ -1,0 +1,19 @@
+{
+  "book": "Rui, Wang, Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2018",
+  "section": "3.5-3.7",
+  "extraction": "pdftotext text layer; Eq. (3.115) read from the rendered page 106 (PDF page 138).",
+  "tolerance_rule": "One unit in the last printed digit.",
+  "examples": {
+    "3.9": {
+      "page": 109, "table": "3.2", "unit": "rad/s",
+      "data": {"K": 615.86, "m": 15.6, "l": 5.0, "m_bar": 6.24, "EI": 213.33, "y0": 0.1},
+      "omega_tmm": ["0.8136", "4.0820", "6.7085", "15.2696", "29.0900", "47.5685", "70.6657",
+                    "98.3774"]
+    },
+    "3.6_damping": {
+      "page": 111, "equations": "3.138-3.140",
+      "note": "Fig. 3.6: springs 2K, K, K, 2K, masses m, damper C parallel to the first spring. Eigenvectors (1, 2, 1), (1, 0, -1), (1, -1, 1) (Eq. 3.139) and C_kp = C for all k, p.",
+      "ckp_over_c": [[1, 1, 1], [1, 1, 1], [1, 1, 1]]
+    }
+  }
+}

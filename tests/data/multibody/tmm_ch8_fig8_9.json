@@ -1,0 +1,115 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "8.14 (Example 8.2)",
+ "figure": "8.9",
+ "page": 323,
+ "pdf_page": 355,
+ "quantity": "angle of rigid body 5 (rad) vs t (s); mid-point deflection u of beam 3 (mm) vs crank angle theta1 (rad), stored under t",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "theta5": {
+   "t": [
+    0.132,
+    0.76,
+    1.388,
+    2.017,
+    2.645
+   ],
+   "low": [
+    -0.529,
+    -0.517,
+    -0.529,
+    -0.519,
+    -0.527
+   ],
+   "high": [
+    -0.502,
+    -0.502,
+    -0.502,
+    -0.504,
+    -0.502
+   ],
+   "px_per_unit": 475.62
+  },
+  "u_mid_mm": {
+   "t": [
+    0.3,
+    0.87,
+    1.461,
+    2.061,
+    2.655,
+    3.24,
+    3.822,
+    4.404,
+    4.989,
+    5.577,
+    6.171
+   ],
+   "low": [
+    -1.278,
+    -0.857,
+    -0.03,
+    0.229,
+    -0.059,
+    -0.333,
+    -0.768,
+    -0.865,
+    -0.872,
+    -0.761,
+    -1.034
+   ],
+   "high": [
+    -1.227,
+    -0.798,
+    -0.007,
+    0.244,
+    0.0,
+    -0.318,
+    -0.702,
+    -0.791,
+    -0.776,
+    -0.717,
+    -0.983
+   ],
+   "px_per_unit": 135.33
+  }
+ },
+ "outside_band": {
+  "points": [
+   [
+    "u_mid_mm",
+    0.3
+   ],
+   [
+    "u_mid_mm",
+    0.87
+   ],
+   [
+    "u_mid_mm",
+    2.061
+   ],
+   [
+    "u_mid_mm",
+    3.24
+   ],
+   [
+    "u_mid_mm",
+    3.822
+   ],
+   [
+    "u_mid_mm",
+    4.404
+   ]
+  ],
+  "measured_excess_px": [
+   5.8,
+   8.44,
+   0.25,
+   5.79,
+   10.57,
+   7.7
+  ],
+  "note": "the book troughs of u are about 0.15 mm deeper; the converged RK4 reference of this model (3 or 6 modes) gives the same values as the DT-TMM, so the difference is in the model (the book drops coupling terms, Sec. 8.4)"
+ }
+}

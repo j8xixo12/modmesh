@@ -1,0 +1,131 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "8.14 (Example 8.1)",
+ "figure": "8.7",
+ "page": 321,
+ "pdf_page": 353,
+ "quantity": "angles of rigid body 2, beam 4 (floating frame), rigid body 6 (rad) and mid-point deflection u of the beam (m) vs t (s)",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "theta2": {
+   "t": [
+    2.52,
+    4.276,
+    7.302,
+    9.096,
+    12.702,
+    15.208,
+    18.846
+   ],
+   "low": [
+    -1.346,
+    -2.033,
+    -1.982,
+    -1.313,
+    -1.82,
+    -1.441,
+    -1.982
+   ],
+   "high": [
+    -1.246,
+    -1.977,
+    -1.971,
+    -1.223,
+    -1.793,
+    -1.374,
+    -1.938
+   ],
+   "px_per_unit": 179.17
+  },
+  "theta4": {
+   "t": [
+    0.2,
+    3.064,
+    9.994,
+    13.012,
+    14.768
+   ],
+   "low": [
+    -1.059,
+    -1.095,
+    -2.068,
+    -2.105,
+    -1.103
+   ],
+   "high": [
+    -1.038,
+    -1.031,
+    -1.968,
+    -2.047,
+    -1.074
+   ],
+   "px_per_unit": 138.75
+  },
+  "theta6": {
+   "t": [
+    0.2,
+    1.956,
+    3.984,
+    8.834,
+    12.022,
+    14.186,
+    18.97
+   ],
+   "low": [
+    -1.05,
+    -1.913,
+    -2.06,
+    -0.839,
+    -1.234,
+    -1.399,
+    -2.482
+   ],
+   "high": [
+    -1.032,
+    -1.83,
+    -1.968,
+    -0.739,
+    -1.133,
+    -1.261,
+    -2.326
+   ],
+   "px_per_unit": 109.0
+  },
+  "u_mid": {
+   "t": [
+    0.418,
+    0.764,
+    1.156
+   ],
+   "low": [
+    -0.021,
+    -0.015,
+    0.019
+   ],
+   "high": [
+    -0.016,
+    -0.007,
+    0.026
+   ],
+   "px_per_unit": 2743.75
+  }
+ },
+ "outside_band": {
+  "points": [
+   [
+    "theta4",
+    13.012
+   ],
+   [
+    "theta6",
+    14.186
+   ]
+  ],
+  "measured_excess_px": [
+   0.73,
+   0.47
+  ],
+  "note": "late-time deviation (t > 13 s) of the chaotic pendulum; the book gives no independent analytic curve"
+ }
+}

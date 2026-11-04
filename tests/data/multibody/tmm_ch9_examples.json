@@ -1,0 +1,405 @@
+{
+ "book": "Rui, Wang, Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2018",
+ "section": "9.2-9.6, 15.30-15.31",
+ "extraction": "pdftotext text layer (PDF page = book page + 32).",
+ "tolerance_rule": "Half a unit in the last printed digit (printed values are rounded to 4 decimals).",
+ "chain_6_7": {
+  "note": "Fig. 9.27 / 9.30: wall - K1,C1 - m2 - K3,C3 - m4 - K5,C5 - m6 - free; F4 = F4c cos(Omega t) + F4s sin(Omega t).",
+  "m": [
+   10.0,
+   3.0,
+   0.5
+  ],
+  "K": [
+   300.0,
+   150.0,
+   200.0
+  ],
+  "C": [
+   2.5,
+   0.5,
+   0.1
+  ],
+  "Omega": 8.0,
+  "F4c": 4.0,
+  "F4s": 5.0
+ },
+ "examples": {
+  "9.6": {
+   "page": 352,
+   "equation": "(c)",
+   "control": "F_2c = -Ka xdd_6 - Kv xd_6 - Kd x_6 on mass 2",
+   "gains": [
+    5.0,
+    0.0,
+    0.0
+   ],
+   "cos": [
+    -0.0296,
+    0.0085,
+    0.0101
+   ],
+   "sin": [
+    -0.0434,
+    0.0169,
+    0.0202
+   ]
+  },
+  "9.7": {
+   "page": 355,
+   "equation": "(h)",
+   "control": "F_3c in parallel with spring 3 (pushes m4 in +x, m2 in -x)",
+   "gains": [
+    5.0,
+    5.0,
+    5.0
+   ],
+   "cos": [
+    -0.0076,
+    -0.007,
+    -0.0084
+   ],
+   "sin": [
+    -0.0094,
+    -0.0071,
+    -0.0085
+   ]
+  },
+  "9.9": {
+   "page": 361,
+   "control": "Example 9.6 with time delay tau = 0.001 s",
+   "gains": [
+    5.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.001,
+   "cos": [
+    -0.0295,
+    0.0084,
+    0.01
+   ],
+   "sin": [
+    -0.0434,
+    0.017,
+    0.0202
+   ],
+   "note": "The printed values are the steady state for tau = -0.001 s (control force advanced, factor exp(+i Omega tau)); Eq. (9.40)-(9.43) with tau = +0.001 s give -0.0297/-0.0434, 0.0086/0.0169, 0.0103/0.0201."
+  },
+  "9.14": {
+   "page": 375,
+   "control": "Example 9.7 topology with delay 0.001 s",
+   "gains": [
+    0.1,
+    1.0,
+    30.0
+   ],
+   "delay": 0.001,
+   "note": "Results are figure-only (Fig. 9.46). The closed loop of these gains is unstable even without delay (eigenvalue real part +0.0233 1/s)."
+  },
+  "9.5": {
+   "page": 346,
+   "data": {
+    "l": 10.0,
+    "A": 0.0004601,
+    "E": 68950000000.0,
+    "I": 2.031e-07,
+    "rho": 2767.0,
+    "Omega": 6.0,
+    "T": 15.0
+   },
+   "figure_read": {
+    "page": 347,
+    "drive_moment_peak": 338.0,
+    "drive_moment_peak_time": 7.5,
+    "tip_transverse_min": -0.585,
+    "tip_longitudinal_min": -0.0198,
+    "read_precision": {
+     "moment": 5.0,
+     "transverse": 0.01,
+     "longitudinal": 0.0005
+    }
+   },
+   "note": "Results are figure-only (Fig. 9.21-9.24); values read from the rendered page. Finite segment TMM without axial springs: N = 5, 10, 20 give tip transverse minimum -0.6333, -0.6140, -0.6092 m (extrapolated -0.6076), longitudinal minimum -0.02249, -0.02150, -0.02126 m, drive moment peak 341.3, 340.4, 340.1 N m."
+  },
+  "9.4": {
+   "page": 341,
+   "data": {
+    "L": 1.0,
+    "side": 0.01,
+    "rho": 7800.0,
+    "E": 210000000000.0,
+    "n_elements": 4,
+    "rod_mass": 1.0,
+    "rod_length": 1.0,
+    "rod_jc": 0.0833333333333333,
+    "theta0_deg_below_horizontal": 60.0
+   },
+   "note": "Results are figure-only (Fig. 9.12-9.18)."
+  },
+  "9.3": {
+   "page": 336,
+   "data": {
+    "particle_mass": 0.2,
+    "spring_k": 10000.0,
+    "rod_mass": 1.0,
+    "rod_length": 1.0,
+    "rod_jc": 0.0833333333333333
+   },
+   "note": "Results are figure-only (Fig. 9.9). The particle spacing is not printed.",
+   "assumed": {
+    "spacing": 0.25,
+    "reason": "particle spacing not printed"
+   },
+   "missing": [
+    {
+     "name": "particle spacing (spring free length)",
+     "symbol": "L_(i,i+1),0",
+     "page": 336,
+     "where": "Fig. 9.8, Example 9.3 Eq. (a)"
+    }
+   ]
+  },
+  "9.1": {
+   "page": 329,
+   "data": {
+    "particle_mass": 0.04,
+    "spring_k": 10000.0,
+    "rod_mass": 1.0,
+    "rod_length": 1.0,
+    "rod_jc": 0.0833333333333333
+   },
+   "assumed": {
+    "spacing": 0.15,
+    "reason": "mesh spacing not printed; 0.15 m is the scale of Fig. 9.1 (rod drawn 1 m)"
+   },
+   "missing": [
+    {
+     "name": "mesh spacing (spring free length) of the 5 x 5 particle grid",
+     "symbol": "L_(i-1,i),j,0",
+     "page": 329,
+     "where": "Fig. 9.1, Example 9.1 Eq. (f)"
+    }
+   ],
+   "note": "Results are figure-only (Fig. 9.4)."
+  },
+  "9.2": {
+   "page": 332,
+   "missing": [
+    {
+     "name": "plate thickness",
+     "symbol": "h",
+     "page": 332,
+     "where": "Example 9.2"
+    },
+    {
+     "name": "plate Young modulus",
+     "symbol": "E",
+     "page": 332,
+     "where": "Example 9.2"
+    },
+    {
+     "name": "plate Poisson ratio",
+     "symbol": "mu",
+     "page": 332,
+     "where": "Example 9.2"
+    },
+    {
+     "name": "plate density",
+     "symbol": "rho",
+     "page": 332,
+     "where": "Example 9.2"
+    },
+    {
+     "name": "plate dimensions and lumped-mass layout",
+     "symbol": "a, b, Fig. 9.6",
+     "page": 335,
+     "where": "Fig. 9.6"
+    }
+   ],
+   "note": "Only the text 'the flexible plate is simplified as lumped masses' is given; results figure-only (Fig. 9.5)."
+  },
+  "9.8": {
+   "page": 356,
+   "data": {
+    "k_xyz": [
+     [
+      2000,
+      3000,
+      2000
+     ],
+     [
+      3000,
+      2500,
+      2000
+     ],
+     [
+      4000,
+      2000,
+      4500
+     ],
+     [
+      5000,
+      3000,
+      5000
+     ]
+    ],
+    "m5": 2.0,
+    "J5": 0.03,
+    "m9": 0.2,
+    "J_rotor": 0.0006,
+    "k_torsion": [
+     1500,
+     1500,
+     1500
+    ],
+    "alpha": 0.025,
+    "beta": 0.05,
+    "control": {
+     "kax": 0.0002,
+     "kdx": 1000,
+     "kay": 0.0003,
+     "kdy": 2000,
+     "kaz": 0.0004,
+     "kdz": 3000
+    }
+   },
+   "missing": [
+    {
+     "name": "ground anchor points of springs 1-4",
+     "symbol": "r_0,j (j = 1..4)",
+     "page": 357,
+     "where": "Fig. 9.32"
+    },
+    {
+     "name": "connection points of springs 1-4 on rigid body 5",
+     "symbol": "b_5,j (j = 1..4)",
+     "page": 357,
+     "where": "Fig. 9.32"
+    },
+    {
+     "name": "connection points of torsional springs 6-8 on body 5 and their axes",
+     "symbol": "r_5,6..8",
+     "page": 357,
+     "where": "Fig. 9.32"
+    },
+    {
+     "name": "masses of rotors 10 and 11",
+     "symbol": "m_10, m_11",
+     "page": 357,
+     "where": "Example 9.8"
+    },
+    {
+     "name": "mass center of body 5 relative to the connection points",
+     "symbol": "r_C5",
+     "page": 357,
+     "where": "Example 9.8"
+    }
+   ],
+   "note": "Results figure-only (Fig. 9.33-9.35)."
+  },
+  "9.12": {
+   "page": 365,
+   "data": {
+    "m1": 0.0568,
+    "r1": 0.1,
+    "Jc1": 4.73e-05,
+    "EI3": 20.267,
+    "A3": 0.0002,
+    "l3": 1.0,
+    "Ea": 63000000000.0,
+    "la": 0.1,
+    "ha": 0.0004,
+    "d31": 1.1e-10,
+    "pzt_positions": [
+     [
+      0.0,
+      0.1
+     ],
+     [
+      0.45,
+      0.55
+     ],
+     [
+      0.9,
+      1.0
+     ]
+    ]
+   },
+   "missing": [
+    {
+     "name": "beam density (or mass per unit length)",
+     "symbol": "rho, m = rho A3",
+     "page": 366,
+     "where": "Example 9.12"
+    },
+    {
+     "name": "beam width and thickness",
+     "symbol": "b, t_b",
+     "page": 369,
+     "where": "Eq. (9.70) c_a"
+    },
+    {
+     "name": "PD gains of the hub motor",
+     "symbol": "K_p, K_v",
+     "page": 367,
+     "where": "Eq. (9.64)"
+    },
+    {
+     "name": "PZT gain coefficients",
+     "symbol": "K_ai (i = 1..3)",
+     "page": 367,
+     "where": "Eq. (9.65)"
+    },
+    {
+     "name": "PZT actuator thickness",
+     "symbol": "t_a",
+     "page": 369,
+     "where": "Eq. (9.70) c_a (h_a = 0.4 mm given; t_a not identified)"
+    }
+   ],
+   "note": "Results figure-only (Fig. 9.43)."
+  },
+  "9.13": {
+   "page": 371,
+   "data": {
+    "Ka": 0.0,
+    "Kv": 700000.0,
+    "Kd": 80000.0
+   },
+   "missing": [
+    {
+     "name": "rigid body mass and inertia",
+     "symbol": "m, J",
+     "page": 371,
+     "where": "Example 9.13"
+    },
+    {
+     "name": "rigid body geometry (input/output points)",
+     "symbol": "l_IO, l_IC",
+     "page": 371,
+     "where": "Fig. 9.44"
+    },
+    {
+     "name": "spatial elastic hinge stiffnesses",
+     "symbol": "K, K'",
+     "page": 371,
+     "where": "Fig. 9.44"
+    },
+    {
+     "name": "external force (magnitude, direction, time law)",
+     "symbol": "f",
+     "page": 371,
+     "where": "Fig. 9.44"
+    },
+    {
+     "name": "coordinate transformation angle",
+     "symbol": "alpha in H_alpha",
+     "page": 373,
+     "where": "Eq. (9.79)"
+    }
+   ],
+   "note": "Results figure-only (Fig. 9.45)."
+  }
+ }
+}

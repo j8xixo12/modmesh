@@ -1,0 +1,108 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "7.9.2 (Example 7.1)",
+ "figure": "7.18",
+ "page": 262,
+ "pdf_page": 294,
+ "quantity": "orientation angles of bars 2, 4, 6 (rad) vs t (s)",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "theta2": {
+   "t": [
+    0.925,
+    2.494,
+    4.057,
+    4.958,
+    5.697,
+    6.532,
+    7.271,
+    8.551
+   ],
+   "low": [
+    -1.75,
+    -1.352,
+    -1.953,
+    -1.736,
+    -1.178,
+    -1.605,
+    -2.04,
+    -1.25
+   ],
+   "high": [
+    -1.692,
+    -1.265,
+    -1.903,
+    -1.685,
+    -1.112,
+    -1.504,
+    -1.961,
+    -1.199
+   ],
+   "px_per_unit": 137.92
+  },
+  "theta4": {
+   "t": [
+    1.311,
+    2.822,
+    3.719,
+    4.458,
+    5.278,
+    6.102,
+    8.679
+   ],
+   "low": [
+    -2.129,
+    -1.076,
+    -1.714,
+    -2.11,
+    -1.424,
+    -1.211,
+    -1.008
+   ],
+   "high": [
+    -2.081,
+    -0.979,
+    -1.627,
+    -2.033,
+    -1.279,
+    -1.124,
+    -0.94
+   ],
+   "px_per_unit": 103.44
+  },
+  "theta6": {
+   "t": [
+    0.2,
+    1.103,
+    1.882,
+    3.964,
+    5.551,
+    7.344,
+    8.723,
+    9.573
+   ],
+   "low": [
+    -1.061,
+    -2.236,
+    -1.945,
+    -2.006,
+    -1.109,
+    -2.164,
+    -0.77,
+    -1.703
+   ],
+   "high": [
+    -0.988,
+    -2.2,
+    -1.873,
+    -1.873,
+    -0.988,
+    -2.067,
+    -0.709,
+    -1.582
+   ],
+   "px_per_unit": 82.5
+  }
+ }
+}

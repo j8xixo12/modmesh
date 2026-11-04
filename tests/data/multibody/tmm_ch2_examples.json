@@ -1,0 +1,82 @@
+{
+  "book": "Rui, Wang, Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2018",
+  "section": "2.4-2.9",
+  "extraction": "pdftotext text layer of ref/TMM_for_multibody_dynamics.pdf (PDF page = book page + 32); Tables 2.9 and 2.15 also read from the rendered page images. Values are strings so that the printed precision is kept.",
+  "tolerance_rule": "One unit in the last printed digit of each value (book values are rounded; the book refines roots by dichotomy).",
+  "examples": {
+    "2.3": {
+      "page": 37, "table": "2.2", "unit": "rad/s",
+      "data": {"m": 1.0, "l": 1.0, "EI": 1.0},
+      "free_free": ["0", "0", "1.789", "4.000"],
+      "fixed_free": ["0.146", "1.080", "3.144", "5.731"],
+      "simply_supported": ["0.343", "1.593", "3.754", "5.274"]
+    },
+    "2.6": {
+      "page": 43, "table": "2.3", "unit": "rad/s",
+      "data": {"m": 1.0, "l": 0.1, "Kx": 1000.0, "Ky": 50000.0, "Kz": 4000.0, "J": "5/12 m l^2"},
+      "omega": ["10.98", "31.62", "48.45", "59.43", "64.24", "196.47", "334.78", "417.66",
+                "727.58", "1606.10", "2394.15", "2916.31"]
+    },
+    "2.7": {
+      "page": 45, "table": "2.4", "unit": "rad/s",
+      "data": {"b": 0.01, "h": 0.01, "l": 1.0, "rho": 7800.0, "E": 200e9},
+      "omega": ["51.40", "322.1", "901.9", "1767.3", "2921.5", "4364.2", "6095.4", "8115.2"],
+      "lambda_l": ["1.8751", "4.6941", "7.8548", "10.9955", "14.1372", "17.2788", "20.4204",
+                   "23.5619"]
+    },
+    "2.8": {
+      "page": 46, "table": "2.5", "unit": "rad/s",
+      "data": {"GAs": 6.664e6, "rho_z_printed": 0.029, "rho_z_used": "h/sqrt(12) = 0.0028868"},
+      "note": "The printed radius of gyration 0.029 m is a typo; h/sqrt(12) reproduces every value of Table 2.5.",
+      "omega": ["51.40", "321.9", "900.7", "1763.1", "2910.4", "4340.2", "6049.5", "8035.2"]
+    },
+    "2.9": {
+      "page": 50, "table": "2.9", "unit": "rad/s",
+      "data": {"b": 0.01, "root_height": 0.02, "l": 1.0, "rho": 7800.0, "E": 200e9, "G": 80e9,
+               "kappa_s": "1/0.833"},
+      "note": "Wedge beam (height linear to zero, Fig. 2.27). Each step uses the height at its midpoint; this rule reproduces the table.",
+      "timoshenko_n100": ["155.3", "443.8", "873.7", "1440.9", "2134.4", "2928.5", "3779.9", "4696.3"],
+      "timoshenko_n10": ["150.6", "367.1", "621.4", "1120.3", "1873.3", "2831.6", "3682.2", "4728.8"],
+      "euler_n100": ["155.4", "444.1", "874.6", "1443.1", "2138.9", "2936.1", "3791.3", "4713.7"],
+      "euler_n10": ["150.6", "367.3", "621.8", "1121.8", "1877.6", "2840.2", "3692.4", "4754.5"]
+    },
+    "2.10": {
+      "page": 52, "table": "2.10", "unit": "rad/s",
+      "data": {"K1": 1000.0, "K1r": 150.0, "m2": 7.8, "b": 0.1, "h": 0.1, "EI3": 166.67, "l3": 1.0,
+               "m3": 0.78},
+      "omega": ["10.7", "20.7", "143.7", "372.0", "925.7", "1783.3", "2934.0", "4374.8", "6104.8",
+                "8123.8"],
+      "table_2_11_page": 53,
+      "omega_m2_7800": ["0.3580", "2.138", "51.63", "322.1", "901.9", "1767.3", "2921.5", "4364.2",
+                        "6095.5", "8115.3"],
+      "table_2_12_page": 53,
+      "omega_K1r_inf": ["10.78", "52.96", "325.1", "904.8", "1770.2", "2924.4", "4367.1", "6098.4",
+                        "8118.2"]
+    },
+    "2.11": {
+      "page": 54, "table": "2.13", "unit": "rad/s",
+      "data": {"l": [1.2, 0.6, 0.5, 1.0], "r": [0.01, 0.02, 0.02, 0.01], "J": [0.312, 0.936, 0.312],
+               "rho": 7800.0, "G": 80e9},
+      "omega": ["0", "340.0", "446.2", "4192.9", "5031.4", "12576.7", "15092.0", "16777.1"],
+      "table_2_14_page": 55,
+      "omega_massless": ["0", "340.3", "446.4"]
+    },
+    "2.14": {
+      "page": 77, "table": "2.15",
+      "data": {"J": [2.0, 1.0, 1.1, 1.5], "K2": "8/3", "r3": 2.2, "C4": 3.2, "K6": 2.5, "g6": 0.2,
+               "Omega2": 0.8, "M5": [-0.75, 0.70], "M7": [0.20, 0.60]},
+      "note": "U_2 on page 76 prints -1/K2; the physical sign +1/K2 (as in Eq. 2.22 and U_6) reproduces the table.",
+      "theta_real": ["0.2271", "0.0908", "-0.1034", "-0.0801"],
+      "theta_imag": ["0.3826", "0.1530", "0.4106", "0.3191"]
+    },
+    "table_2.6": {
+      "page": 47, "table": "2.6",
+      "fixed_free": ["1.8751", "4.6941", "7.8548", "10.9955"],
+      "fixed_fixed": ["4.7300", "7.8532", "10.9956", "14.1372"],
+      "fixed_pinned": ["3.9266", "7.0686", "10.2102", "13.3518"],
+      "pinned_pinned": ["3.1416", "6.2832", "9.4248", "12.5664"],
+      "pinned_free": ["0", "3.9266", "7.0686", "10.2102", "13.3518"],
+      "free_free": ["0", "0", "4.7300", "7.8532", "10.995", "14.1372"]
+    }
+  }
+}

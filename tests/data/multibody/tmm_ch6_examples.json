@@ -1,0 +1,122 @@
+{
+  "book": "Rui, Wang, Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2018",
+  "section": "6.6, 15.6, 15.7",
+  "extraction": "Parameters from the text layer (pdftotext); results read from the rendered Figures 6.5-6.8 and 6.11-6.12 (PDF pages 245-248). Figure readings carry the stated reading tolerance.",
+  "examples": {
+    "6.6.1": {
+      "page": 213,
+      "figures": [
+        "6.5",
+        "6.6",
+        "6.7",
+        "6.8"
+      ],
+      "data": {
+        "l": 5.0,
+        "A": 7.3e-05,
+        "I": 8.218e-09,
+        "rho": 2766.67,
+        "E": 68950000000.0,
+        "hub_radius": 1.0,
+        "hub_mass": 10.0,
+        "hub_J": 5.0,
+        "moment": "20 N m for 0 <= t < 10 s, 0 otherwise (Fig. 6.5)"
+      },
+      "figure_readings": {
+        "omega_mean_after_10s": {
+          "value": 10.25,
+          "tol": 0.1,
+          "unit": "rad/s",
+          "figure": "6.6"
+        },
+        "u_tip_mean_after_10s": {
+          "value": 0.000227,
+          "tol": 5e-06,
+          "unit": "m",
+          "figure": "6.7"
+        },
+        "v_tip_min_before_10s": {
+          "value": -0.3,
+          "tol": 0.02,
+          "unit": "m",
+          "figure": "6.8"
+        },
+        "v_tip_max_before_10s": {
+          "value": 0.15,
+          "tol": 0.02,
+          "unit": "m",
+          "figure": "6.8"
+        },
+        "v_tip_amplitude_after_10s": {
+          "value": 0.16,
+          "tol": 0.01,
+          "unit": "m",
+          "figure": "6.8",
+          "note": "not reproduced (xfail): TMM 0.182 m; step at 9.9/9.95/10.05 s (equal impulse) gives 0.278/0.228/0.177 m, the residual amplitude depends on the vibration phase at the step"
+        }
+      }
+    },
+    "6.6.2": {
+      "page": 216,
+      "figures": [
+        "6.11",
+        "6.12"
+      ],
+      "data": {
+        "tip_mass": 0.2,
+        "tip_J": 0.0,
+        "note": "other data as 6.6.1; tip body modeled as a point mass at the beam end"
+      },
+      "figure_readings": {
+        "omega_mean_after_10s": {
+          "value": 7.5,
+          "tol": 0.1,
+          "unit": "rad/s",
+          "figure": "6.11"
+        },
+        "v_tip_min_before_10s": {
+          "value": -0.38,
+          "tol": 0.02,
+          "unit": "m",
+          "figure": "6.12",
+          "note": "not reproduced (xfail): TMM -0.405 m; terminal body geometry of Fig. 6.10 not given (only m = 0.2 kg, J = 0), modeled as a point mass"
+        },
+        "v_tip_amplitude_after_10s": {
+          "value": 0.155,
+          "tol": 0.01,
+          "unit": "m",
+          "figure": "6.12",
+          "note": "not reproduced (xfail): TMM 0.21 m; phase sensitive (0.168 m for a step at 10.05 s, 0.281 m at 9.95 s)"
+        }
+      },
+      "missing_data": [
+        {
+          "name": "terminal rigid body dimensions and mass center (input I to output O, Fig. 6.10)",
+          "page": 215
+        }
+      ]
+    }
+  },
+  "errata": {
+    "15.17": {
+      "page": 614,
+      "printed": "U_I(3,1) = -m omega^2 l~_I1C^T",
+      "consistent": "-m omega^2 l~_I1C (Eq. 15.14, 15.18, 15.19)"
+    },
+    "15.24": {
+      "page": 617,
+      "printed": "compression: lambda = sqrt(P/EI), d1 = -lambda^2",
+      "consistent": "lambda = sqrt(-P/EI) (imaginary), d1 = lambda^2 for both signs; u_14 = -(lambda x - sinh lambda x)/(d1 lambda EI) - x/GA_s"
+    },
+    "15.29": {
+      "page": 619,
+      "printed": "Eq. 15.29 with d1..d13",
+      "consistent": "u_12, u_13 sign flipped; u_22, u_23 wrong; singular for c1 = 1 (d5 = d7 = 0)"
+    },
+    "6.40": {
+      "page": 204,
+      "printed": "first block columns of a_2,3 and a_2,4 are zero",
+      "consistent": "-varphi'(0) m_I and varphi'(l) m_O generalized forces of the boundary moments; zero for the book examples"
+    }
+  }
+}

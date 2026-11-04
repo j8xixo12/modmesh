@@ -1,0 +1,94 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "5.10.2",
+ "figure": "5.7",
+ "page": 196,
+ "pdf_page": 228,
+ "quantity": "relative rotation angles of pin hinges 0, 2, 4 (rad) vs t (s)",
+ "model_note": "hinge axes not stated in the text; axes z (ground), y and z (body frames of the inboard bodies) reproduce the figure",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "Theta1": {
+   "t": [
+    4.748,
+    5.718,
+    7.6,
+    8.616
+   ],
+   "low": [
+    -2.942,
+    -1.983,
+    -1.896,
+    -2.967
+   ],
+   "high": [
+    -2.83,
+    -1.896,
+    -1.797,
+    -2.867
+   ],
+   "px_per_unit": 80.33
+  },
+  "Theta3": {
+   "t": [
+    0.2,
+    1.38,
+    2.918,
+    4.412,
+    6.406,
+    8.094,
+    9.742
+   ],
+   "low": [
+    0.145,
+    -0.589,
+    0.282,
+    0.257,
+    -0.365,
+    -0.564,
+    0.32
+   ],
+   "high": [
+    0.257,
+    -0.527,
+    0.519,
+    0.344,
+    -0.278,
+    -0.527,
+    0.382
+   ],
+   "px_per_unit": 80.33
+  },
+  "Theta5": {
+   "t": [
+    0.422,
+    1.356,
+    3.284,
+    4.586,
+    6.512,
+    7.944,
+    9.794
+   ],
+   "low": [
+    0.581,
+    0.133,
+    -0.776,
+    -1.199,
+    -0.95,
+    -1.274,
+    -0.664
+   ],
+   "high": [
+    0.693,
+    0.245,
+    -0.689,
+    -1.137,
+    -0.863,
+    -1.212,
+    -0.589
+   ],
+   "px_per_unit": 80.33
+  }
+ }
+}

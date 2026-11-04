@@ -1,0 +1,214 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "8.15 (Example 8.3)",
+ "figure": "8.11",
+ "page": 324,
+ "pdf_page": "356-357",
+ "quantity": "mid-point deflections v (y2) and w (z2) of beam 4 (m); theta_z (rad) of rigid body 2, floating frame of beam 4, rigid body 6 vs t (s)",
+ "model_note": "EI = E J_4x / (2 rho l) = 333.3 N m^2 (circular section); 3 sine modes per plane; g = 9.8",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "v_mid": {
+   "t": [
+    0.397,
+    1.204,
+    1.999,
+    2.848,
+    3.725,
+    4.676,
+    5.552,
+    6.34,
+    7.148,
+    7.93
+   ],
+   "low": [
+    -0.0003818,
+    0.0003818,
+    0.0002545,
+    -0.0004636,
+    -0.0005364,
+    7.27e-05,
+    1.82e-05,
+    3.64e-05,
+    -0.0004909,
+    2.73e-05
+   ],
+   "high": [
+    -0.0002545,
+    0.0004727,
+    0.0003818,
+    -0.0003273,
+    -0.0004,
+    0.0002455,
+    0.0001182,
+    0.0001364,
+    -0.0002727,
+    0.0001545
+   ],
+   "px_per_unit": 110000.0
+  },
+  "w_mid": {
+   "t": [
+    0.2,
+    0.982,
+    1.764,
+    2.55,
+    3.338,
+    4.307,
+    5.089,
+    5.951,
+    7.138,
+    8.035
+   ],
+   "low": [
+    -3.03e-05,
+    -3.03e-05,
+    -3.95e-05,
+    6.1e-06,
+    -3.95e-05,
+    -0.0001487,
+    -7.59e-05,
+    -4.86e-05,
+    -7.59e-05,
+    7.89e-05
+   ],
+   "high": [
+    3.34e-05,
+    1.52e-05,
+    3.34e-05,
+    7.89e-05,
+    3.34e-05,
+    -9.41e-05,
+    -3.03e-05,
+    -3.03e-05,
+    -4.86e-05,
+    9.71e-05
+   ],
+   "px_per_unit": 109833.33
+  },
+  "theta_z2": {
+   "t": [
+    0.557,
+    2.224,
+    3.258,
+    4.736,
+    5.903,
+    7.226,
+    8.15
+   ],
+   "low": [
+    -1.0960912,
+    -2.1221498,
+    0.1205212,
+    -2.9283388,
+    -1.242671,
+    -1.4625407,
+    -3.0895765
+   ],
+   "high": [
+    -0.9055375,
+    -1.990228,
+    0.2084691,
+    -2.7964169,
+    -1.1400651,
+    -1.3306189,
+    -2.9723127
+   ],
+   "px_per_unit": 68.22
+  },
+  "theta_z4": {
+   "t": [
+    0.2,
+    1.258,
+    2.448,
+    3.23,
+    4.159,
+    4.941,
+    6.257,
+    7.778
+   ],
+   "low": [
+    -0.0519481,
+    -2.8701299,
+    -1.6623377,
+    -0.3376623,
+    -1.8701299,
+    -3.4415584,
+    -0.2467532,
+    -2.7402597
+   ],
+   "high": [
+    0.0649351,
+    -2.7532468,
+    -1.5584416,
+    -0.2207792,
+    -1.7662338,
+    -3.3506494,
+    0.0909091,
+    -2.5974026
+   ],
+   "px_per_unit": 77.0
+  },
+  "theta_z6": {
+   "t": [
+    0.2,
+    1.064,
+    1.846,
+    2.765,
+    3.547,
+    4.543,
+    5.325,
+    6.263
+   ],
+   "low": [
+    -0.0750361,
+    -2.8600289,
+    -3.1774892,
+    -0.1038961,
+    -0.1183261,
+    -3.4516595,
+    -3.1919192,
+    -0.3924964
+   ],
+   "high": [
+    0.0836941,
+    -2.6868687,
+    -3.047619,
+    0.0692641,
+    0.0548341,
+    -3.3217893,
+    -3.033189,
+    -0.2193362
+   ],
+   "px_per_unit": 69.3
+  }
+ },
+ "outside_band": {
+  "points": [
+   [
+    "w_mid",
+    4.307
+   ],
+   [
+    "w_mid",
+    5.951
+   ],
+   [
+    "w_mid",
+    7.138
+   ],
+   [
+    "w_mid",
+    8.035
+   ]
+  ],
+  "measured_excess_px": [
+   3.69,
+   2.9,
+   2.55,
+   0.88
+  ],
+  "note": "out-of-plane deflection w (order 1e-4 m) after 4 s; halving dT changes the value by 0.3-0.8 px only, so the excess is not a step-size error; not explained"
+ }
+}

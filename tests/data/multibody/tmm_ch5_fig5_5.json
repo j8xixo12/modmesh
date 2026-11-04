@@ -1,0 +1,33 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "5.10.1",
+ "figure": "5.5",
+ "page": 195,
+ "pdf_page": 227,
+ "quantity": "space x-y-z angle theta_3 (rad) of body element 1 vs t (s)",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "theta3": {
+   "t": [
+    2.241,
+    5.627,
+    7.26,
+    9.234
+   ],
+   "low": [
+    -2.147,
+    -1.968,
+    -1.095,
+    -1.537
+   ],
+   "high": [
+    -2.032,
+    -1.874,
+    -1.021,
+    -1.421
+   ],
+   "px_per_unit": 95.0
+  }
+ }
+}

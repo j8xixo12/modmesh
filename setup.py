@@ -80,6 +80,7 @@ def main():
             'solvcon.multibody.models',
             'solvcon.multibody.models.haug',
             'solvcon.multibody.models.validation',
+            'solvcon.multibody.tmm',
             'solvcon.multibody.tools',
             'solvcon.onedim',
             'solvcon.onedim.euler',

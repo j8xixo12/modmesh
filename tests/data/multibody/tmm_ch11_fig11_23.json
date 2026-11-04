@@ -1,0 +1,142 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "11.8.2 (Example 11.7)",
+ "figure": "11.23",
+ "page": 468,
+ "pdf_page": 500,
+ "quantity": "orientation angles of bars 2, 4, 6, 7 (rad) vs t (s)",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "theta2": {
+   "t": [
+    0.554,
+    2.74,
+    4.026,
+    9.792,
+    11.386
+   ],
+   "low": [
+    -1.574,
+    -1.213,
+    -2.026,
+    -2.004,
+    -1.166
+   ],
+   "high": [
+    -1.536,
+    -1.166,
+    -1.953,
+    -1.94,
+    -1.111
+   ],
+   "px_per_unit": 235.0
+  },
+  "theta4": {
+   "t": [
+    0.252,
+    1.85,
+    3.11,
+    5.374,
+    7.388,
+    9.118,
+    10.192
+   ],
+   "low": [
+    -1.062,
+    -1.944,
+    -1.127,
+    -1.108,
+    -1.925,
+    -1.428,
+    -2.036
+   ],
+   "high": [
+    -0.944,
+    -1.801,
+    -1.056,
+    -1.075,
+    -1.912,
+    -1.356,
+    -1.977
+   ],
+   "px_per_unit": 153.0
+  },
+  "theta6": {
+   "t": [
+    0.2,
+    1.918,
+    3.554,
+    5.346,
+    6.838,
+    8.55,
+    11.064
+   ],
+   "low": [
+    -1.105,
+    -1.697,
+    -1.806,
+    -0.849,
+    -2.753,
+    -0.503,
+    -0.562
+   ],
+   "high": [
+    -0.987,
+    -1.49,
+    -1.678,
+    -0.72,
+    -2.556,
+    -0.434,
+    -0.484
+   ],
+   "px_per_unit": 101.33
+  },
+  "theta7": {
+   "t": [
+    0.824,
+    3.922,
+    6.342,
+    9.982,
+    11.398
+   ],
+   "low": [
+    -1.405,
+    -1.704,
+    -1.136,
+    -1.667,
+    -1.838
+   ],
+   "high": [
+    -1.27,
+    -1.692,
+    -1.118,
+    -1.588,
+    -1.716
+   ],
+   "px_per_unit": 163.75
+  }
+ },
+ "outside_band": {
+  "points": [
+   [
+    "theta4",
+    7.388
+   ],
+   [
+    "theta7",
+    3.922
+   ],
+   [
+    "theta7",
+    6.342
+   ]
+  ],
+  "measured_excess_px": [
+   0.64,
+   0.12,
+   0.76
+  ],
+  "note": "DT-TMM (Houbolt, dT 2.5e-3) value outside the 2 px read band; the book shows no independent analytic curve here, so these points are expected failures (xfail strict)"
+ }
+}

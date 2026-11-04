@@ -1,0 +1,150 @@
+{
+ "book": "X. Rui, G. Wang, J. Zhang, Transfer Matrix Method for Multibody Systems: Theory and Applications, Wiley 2019",
+ "section": "7.2 (Table 7.1)",
+ "figure": "7.3",
+ "page": 224,
+ "pdf_page": 256,
+ "quantity": "position x (m) of lumped masses 1-5 vs t (s)",
+ "read_method": "Page rendered at 200 dpi (pdftoppm). Axis pixel positions from the tick marks. At each time t the dark pixel run of the plotted book curve nearest the expected value is read in a 3-pixel-wide column; low/high are the run edges widened by 1 px (axis calibration). Read points avoid steep slopes and sharp extrema. Read uncertainty: 2 px beyond low/high (rasterization 1 px, plot resolution of the book 1 px).",
+ "read_uncertainty_px": 2,
+ "curves": {
+  "x1": {
+   "t": [
+    0.039,
+    0.466,
+    0.57,
+    0.702
+   ],
+   "low": [
+    0.19,
+    0.168,
+    0.244,
+    0.197
+   ],
+   "high": [
+    0.206,
+    0.174,
+    0.252,
+    0.211
+   ],
+   "px_per_unit": 985.71
+  },
+  "x2": {
+   "t": [
+    0.069,
+    0.181,
+    0.297,
+    0.444,
+    0.722,
+    0.862,
+    0.966
+   ],
+   "low": [
+    0.303,
+    0.289,
+    0.31,
+    0.202,
+    0.338,
+    0.272,
+    0.339
+   ],
+   "high": [
+    0.311,
+    0.304,
+    0.325,
+    0.215,
+    0.342,
+    0.277,
+    0.343
+   ],
+   "px_per_unit": 985.71
+  },
+  "x3": {
+   "t": [
+    0.132,
+    0.25,
+    0.367,
+    0.488,
+    0.609,
+    0.723
+   ],
+   "low": [
+    0.468,
+    0.343,
+    0.425,
+    0.4,
+    0.368,
+    0.441
+   ],
+   "high": [
+    0.472,
+    0.356,
+    0.428,
+    0.405,
+    0.377,
+    0.449
+   ],
+   "px_per_unit": 985.71
+  },
+  "x4": {
+   "t": [
+    0.064,
+    0.189,
+    0.295,
+    0.472,
+    0.606,
+    0.731,
+    0.866
+   ],
+   "low": [
+    0.532,
+    0.417,
+    0.567,
+    0.43,
+    0.5,
+    0.538,
+    0.388
+   ],
+   "high": [
+    0.54,
+    0.422,
+    0.579,
+    0.44,
+    0.515,
+    0.548,
+    0.398
+   ],
+   "px_per_unit": 985.71
+  },
+  "x5": {
+   "t": [
+    0.03,
+    0.134,
+    0.337,
+    0.538,
+    0.696,
+    0.813,
+    0.938
+   ],
+   "low": [
+    0.499,
+    0.689,
+    0.677,
+    0.731,
+    0.544,
+    0.636,
+    0.586
+   ],
+   "high": [
+    0.504,
+    0.694,
+    0.697,
+    0.741,
+    0.559,
+    0.64,
+    0.592
+   ],
+   "px_per_unit": 985.71
+  }
+ }
+}
