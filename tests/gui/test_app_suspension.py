@@ -727,6 +727,24 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         self._march(feature)
         self.assertTrue(feature.run.completed, feature.run.message)
 
+    def test_ride_and_vehicle_tabs(self):
+        feature = self._open()
+        feature.on_library('macpherson_front')
+        ride = feature.analysis.ride
+        self.assertEqual(400.0, ride.mass.value())
+        ride.run.click()
+        self.assertIn("ISO 2631-1 Wk weighted", ride.status.text())
+        self.assertIn("body acceleration", ride.plot.labels())
+        vehicle = feature.analysis.vehicle
+        self.assertGreater(vehicle.vehicle.count(), 0)
+        vehicle.run.click()
+        self.assertIn("LLTD", vehicle.status.text())
+        self.assertIn("understeer", vehicle.status.text())
+        self.assertIn("roll [deg]", vehicle.roll_plot.labels())
+        # A model switch drops the ride result of the old model.
+        feature.on_library('five_link_rear')
+        self.assertEqual("", ride.status.text())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics

@@ -619,6 +619,187 @@ class ModalTab(QWidget):
                 for it in range(self.table.topLevelItemCount())]
 
 
+class RideTab(QWidget):
+    """Ride comfort and road holding of the quarter car on an ISO 8608
+    random road: the linear random response with the ISO 2631-1 comfort
+    reaction, the frequency response, and a time run of the engine on a
+    road sample of the class."""
+
+    def __init__(self, handlers, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        row = QHBoxLayout()
+        self.road_class = QComboBox()
+        for name in _session.ROAD_CLASSES:
+            self.road_class.addItem(f"ISO 8608 class {name}", name)
+        self.road_class.setCurrentIndex(2)
+        self.speed = _spin(5.0, 300.0, 60.0, " km/h", decimals=0, step=10.0)
+        self.mass = _spin(10.0, 2000.0, 200.0, " kg", decimals=0, step=10.0)
+        for label, widget in (("Road", self.road_class),
+                              ("Speed", self.speed),
+                              ("Sprung mass", self.mass)):
+            row.addWidget(QLabel(label))
+            row.addWidget(widget)
+        self.run = _button("Ride response", lambda: handlers['ride'](
+            self.road_class.currentData(), self.speed.value(),
+            self.mass.value()))
+        self.run_time = _button("Time run (12 s)",
+                                lambda: handlers['ride_time'](
+                                    self.road_class.currentData(),
+                                    self.speed.value(), self.mass.value()))
+        row.addWidget(self.run)
+        row.addWidget(self.run_time)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.status)
+        plots = QHBoxLayout()
+        self.plot = _plots.KCPlot("Body acceleration per road height",
+                                  "Frequency [Hz]", "m/s^2 per mm")
+        self.time_plot = _plots.KCPlot("Body acceleration (time run)",
+                                       "Time [s]", "m/s^2")
+        plots.addWidget(self.plot, 1)
+        plots.addWidget(self.time_plot, 1)
+        layout.addLayout(plots, 1)
+
+    def clear(self):
+        """Drop the results of another model."""
+        self.plot.set_curves([])
+        self.time_plot.set_curves([])
+        self.status.setText("")
+
+    def show_response(self, out):
+        st = out['stats']
+        self.plot.set_curves([
+            ("body acceleration", list(out['freq']), list(out['body_acc']),
+             _plots.PREVIOUS_COLOR, False),
+            ("Wk weighted", list(out['freq']), list(out['body_acc_w']),
+             _plots.CURRENT_COLOR, False)])
+        holding = ("the tire stays on the road"
+                   if st['tire_load_ratio'] < 0.3 else
+                   "the tire load reaches zero: loss of road holding")
+        self.status.setText(
+            f"ISO 8608 class {st['road_class']} at {st['speed'] * 3.6:g} "
+            f"km/h (linear random response): body acceleration "
+            f"{st['body_acc']:.3f} m/s^2 rms; ISO 2631-1 Wk weighted a_w "
+            f"{st['body_acc_w']:.3f} m/s^2: {st['comfort']}.  Tire load "
+            f"ratio sigma_F / F_static {st['tire_load_ratio']:.3f} "
+            f"({holding}).  Suspension travel {st['travel'] * 1.e3:.1f} mm "
+            f"rms.")
+
+    def show_time(self, out):
+        t = list(out['time'])
+        self.time_plot.set_curves([
+            ("body acceleration", t, list(out['body_acc']),
+             _plots.CURRENT_COLOR, False)])
+        self.status.setText(
+            self.status.text() + f"  Time run (engine, one road sample, "
+            f"after 2 s): a_w {out['body_acc_w']:.3f} m/s^2 "
+            f"({out['comfort']}), tire load ratio "
+            f"{out['tire_load_ratio']:.3f}, travel "
+            f"{out['travel_std'] * 1.e3:.1f} mm rms, off the road "
+            f"{out['airborne'] * 1.e3:.0f} ms.")
+
+
+class VehicleTab(QWidget):
+    """The full vehicle of a bundled vehicle file: steady-state cornering
+    (roll gradient, lateral load transfer, LLTD, understeer gradient)
+    against the roll center model, and a step steer at speed against the
+    linear bicycle model."""
+
+    def __init__(self, handlers, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        row = QHBoxLayout()
+        self.vehicle = QComboBox()
+        row.addWidget(QLabel("Vehicle"))
+        row.addWidget(self.vehicle, 1)
+        self.run = _button("Steady-state cornering",
+                           lambda: handlers['vehicle'](
+                               self.vehicle.currentData()))
+        row.addWidget(self.run)
+        layout.addLayout(row)
+        row = QHBoxLayout()
+        self.speed = _spin(10.0, 250.0, 72.0, " km/h", decimals=0, step=5.0)
+        self.rack = _spin(-50.0, 50.0, 2.0, " mm", decimals=2, step=0.5)
+        for label, widget in (("Speed", self.speed), ("Rack step",
+                                                      self.rack)):
+            row.addWidget(QLabel(label))
+            row.addWidget(widget)
+        self.step = _button("Step steer", lambda: handlers['step_steer'](
+            self.vehicle.currentData(), self.speed.value(),
+            self.rack.value()))
+        row.addWidget(self.step)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.status)
+        plots = QHBoxLayout()
+        self.roll_plot = _plots.KCPlot("Roll and load transfer",
+                                       "Lateral acceleration [g]",
+                                       "deg, kN")
+        self.yaw_plot = _plots.KCPlot("Step steer yaw rate", "Time [s]",
+                                      "deg/s")
+        plots.addWidget(self.roll_plot, 1)
+        plots.addWidget(self.yaw_plot, 1)
+        layout.addLayout(plots, 1)
+
+    def show_vehicles(self, rows):
+        self.vehicle.blockSignals(True)
+        self.vehicle.clear()
+        for stem, name in rows:
+            self.vehicle.addItem(name, stem)
+        self.vehicle.blockSignals(False)
+
+    def show_steady(self, out):
+        ss, cf = out['steady'], out['closed']
+        ay = list(ss['a_y'])
+        deg = 180.0 / 3.141592653589793
+        self.roll_plot.set_curves([
+            ("roll [deg]", ay, list(ss['roll'] * deg),
+             _plots.CURRENT_COLOR, False),
+            ("front load transfer [kN]", ay,
+             list(ss['load_transfer'][:, 0] * 1.e-3),
+             _plots.PREVIOUS_COLOR, False),
+            ("rear load transfer [kN]", ay,
+             list(ss['load_transfer'][:, 1] * 1.e-3), (40, 150, 70),
+             False)])
+        kus = out['understeer'] * deg
+        balance = ("understeer" if kus > 0.0 else "oversteer")
+        self.status.setText(
+            f"{out['name']}: roll gradient {ss['roll_gradient']:.2f} deg/g "
+            f"(roll center model {cf['roll_gradient']:.2f}); LLTD "
+            f"{ss['lltd'] * 100:.1f} % front (roll center model "
+            f"{cf['lltd'] * 100:.1f} %); roll centers "
+            f"{cf['roll_center'][0] * 1.e3:.0f} / "
+            f"{cf['roll_center'][1] * 1.e3:.0f} mm; roll steer "
+            f"{ss['roll_steer'][0] * deg:+.3f} / "
+            f"{ss['roll_steer'][1] * deg:+.3f} deg/g (front / rear, + into "
+            f"the turn); understeer gradient {kus:+.2f} deg/g "
+            f"({balance}).")
+
+    def show_step(self, out):
+        deg = 180.0 / 3.141592653589793
+        t = list(out['time'])
+        self.yaw_plot.set_curves([
+            ("yaw rate", t, list(out['yaw_rate'] * deg),
+             _plots.CURRENT_COLOR, False),
+            ("bicycle model, steady", [t[0], t[-1]],
+             [out['bicycle_yaw_rate'] * deg] * 2, _plots.PREVIOUS_COLOR,
+             True)])
+        st = out['steady']
+        self.status.setText(
+            f"Step steer at {st['speed'] * 3.6:.0f} km/h, front wheels "
+            f"{out['delta'] * deg:+.3f} deg: steady yaw rate "
+            f"{st['yaw_rate'] * deg:+.3f} deg/s (bicycle model "
+            f"{out['bicycle_yaw_rate'] * deg:+.3f}), lateral acceleration "
+            f"{st['lateral_acceleration'] / 9.81:+.3f} g.")
+
+
 class HardpointTab(QWidget):
     """The hardpoint table: edit a coordinate, jog the selected point, and
     set its limit box.  A row selection selects the point in 3D."""
@@ -901,7 +1082,8 @@ class AnalysisPanel(QWidget):
 
     :param handlers: The app's callbacks by name: ``kind``, ``range``,
         ``cursor``, ``export``, ``forces``, ``statics``, ``dynamics``,
-        ``cancel``, and ``modal``.
+        ``cancel``, ``modal``, ``ride``, ``ride_time``, ``vehicle``, and
+        ``step_steer``.
     """
 
     def __init__(self, handlers, parent=None):
@@ -917,9 +1099,12 @@ class AnalysisPanel(QWidget):
         self.hardpoints = HardpointTab(handlers)
         self.batch = BatchTab(handlers)
         self.profile = ProfileTab(handlers)
+        self.ride = RideTab(handlers)
+        self.vehicle = VehicleTab(handlers)
         for title, tab in (("Sweep", self.sweep), ("Statics", self.statics),
                            ("Dynamics", self.dynamics),
-                           ("Modal", self.modal),
+                           ("Modal", self.modal), ("Ride", self.ride),
+                           ("Vehicle", self.vehicle),
                            ("Hardpoints", self.hardpoints),
                            ("Batch", self.batch),
                            ("Profile", self.profile)):

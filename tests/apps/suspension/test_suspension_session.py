@@ -636,6 +636,50 @@ class AnalysisTC(unittest.TestCase):
             self.sess.set_range(-40.0, 40.0, 202)
 
 
+@requires_engine
+class RideVehicleTC(unittest.TestCase):
+    """The ride and vehicle analyses of the session (the numbers are
+    validated in tests/test_multibody_suspension_ride.py and _car.py)."""
+
+    def test_ride_response_and_time_run(self):
+        sess = _session.SuspensionSession(ENGINE)
+        sess.load_library('macpherson_front')
+        out = sess.run_ride('C', 60.0, 400.0)
+        self.assertTrue(out['completed'], out['message'])
+        st = out['stats']
+        self.assertGreater(st['body_acc'], st['body_acc_w'])
+        self.assertEqual(ENGINE.ride.comfort_reaction(st['body_acc_w']),
+                         st['comfort'])
+        self.assertLess(st['tire_load_ratio'], 0.3)
+        # Per mm of road: the wheel hop peak of the body acceleration.
+        self.assertEqual(len(out['freq']), len(out['body_acc']))
+        peak = out['freq'][int(np.argmax(out['body_acc']))]
+        self.assertTrue(5.0 < peak < 20.0, peak)
+        run = sess.run_ride_time('C', 60.0, 400.0, duration=6.0)
+        self.assertTrue(run['completed'], run['message'])
+        self.assertAlmostEqual(st['body_acc_w'], run['body_acc_w'],
+                               delta=0.2 * st['body_acc_w'])
+        bad = sess.run_ride('J', 60.0, 400.0)
+        self.assertFalse(bad['completed'])
+        self.assertIn("road class", bad['message'])
+
+    def test_vehicle_cornering_and_step_steer(self):
+        sess = _session.SuspensionSession(ENGINE)
+        stems = [stem for stem, _ in sess.vehicles()]
+        self.assertIn('road_car', stems)
+        out = sess.run_vehicle('road_car', (0.0, 0.05, 0.1))
+        self.assertTrue(out['completed'], out['message'])
+        self.assertGreater(out['understeer'], 0.0)
+        self.assertTrue(0.3 < out['steady']['lltd'] < 0.7)
+        run = sess.run_step_steer('road_car', 72.0, 1.0,
+                                  understeer=out['understeer'],
+                                  duration=3.0)
+        self.assertTrue(run['completed'], run['message'])
+        self.assertAlmostEqual(run['steady']['yaw_rate'],
+                               run['bicycle_yaw_rate'],
+                               delta=0.03 * abs(run['bicycle_yaw_rate']))
+
+
 class EngineTC(unittest.TestCase):
 
     def test_a_build_without_the_engine_is_reported(self):

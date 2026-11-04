@@ -32,6 +32,7 @@ import copy
 import json
 import math
 import os
+import sys
 
 import numpy as np
 
@@ -368,7 +369,8 @@ class SuspensionSession(object):
         on = model.spring_body()
         forces = [("spring", [
             ("rate", f"{model.spring_k * 1.e-3:g} N/mm"),
-            ("damping", f"{model.spring_c * 1.e-3:g} N.s/mm"),
+            ("damping", f"{model.spring_c * 1.e-3:g} N.s/mm"
+             if model.damper_curve is None else _curve_text(model)),
             (on.replace('arm_', '') + " point", point(spring_name)),
             ("chassis point", point('spring_chassis')),
             ("free length offset",
@@ -1232,6 +1234,135 @@ class SuspensionSession(object):
         return QuarterCarRun(self.engine, self.model(), sprung_mass, road,
                              dt)
 
+    # Ride comfort and road holding (P17).
+
+    def run_ride(self, road_class, speed_kmh, sprung_mass, count=600):
+        """The linear ride of the current model on an ISO 8608 road.
+
+        :return: dict with ``completed``, ``message``, ``stats`` (the
+            random response of :class:`suspension.ride.LinearCorner`, with
+            ``road_class`` and ``speed``), and the frequency response
+            ``freq`` (Hz), ``body_acc`` and ``body_acc_w`` (m/s^2 per mm of
+            road), ``tire_force`` (N per mm)
+        """
+        eng = self.engine
+        self.warnings = []
+        try:
+            speed = float(speed_kmh) / 3.6
+            lin = eng.ride.LinearCorner(eng.mbs, self.model(),
+                                        float(sprung_mass))
+            stats = lin.random_response(road_class, speed)
+            freq = np.geomspace(0.3, 50.0, count)
+            resp = lin.response(freq)
+        except Exception as exc:
+            self.warnings.append(self._entry('error', 'ride', None,
+                                             f"ride analysis failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        stats.update({'road_class': road_class, 'speed': speed,
+                      'static_load': lin.static_load})
+        weight = np.abs(eng.ride.weighting(freq, 'k'))
+        return {'completed': True, 'message': '', 'stats': stats,
+                'freq': freq,
+                'body_acc': np.abs(resp['body_acc']) / MM,
+                'body_acc_w': np.abs(resp['body_acc']) * weight / MM,
+                'tire_force': np.abs(resp['tire_force']) / MM}
+
+    def run_ride_time(self, road_class, speed_kmh, sprung_mass,
+                      duration=12.0, seed=1):
+        """March the quarter car of the current model over a random road of
+        the class (a point follower, the input of the linear theory).
+
+        :return: dict with ``completed``, ``message``, and the result of
+            :func:`suspension.ride.simulate`
+        """
+        eng = self.engine
+        self.warnings = []
+        try:
+            speed = float(speed_kmh) / 3.6
+            prof = eng.ride.random_profile(road_class,
+                                           speed * duration + 5.0, seed=seed)
+            out = eng.ride.simulate(
+                eng.mbs, self.model(), float(sprung_mass),
+                eng.ride.point_road_input(prof, speed, duration), settle=2.0)
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'ride', None, f"ride time run failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        out.update({'completed': True, 'message': ''})
+        return out
+
+    # The full vehicle (P18).
+
+    def vehicles(self):
+        """``[(stem, name)]`` of the bundled vehicle files."""
+        folder = self.engine.car.DATA_DIR
+        out = []
+        for fname in sorted(os.listdir(folder)):
+            if fname.endswith('.json'):
+                with open(os.path.join(folder, fname)) as fobj:
+                    out.append((fname[:-5], json.load(fobj)['name']))
+        return out
+
+    def run_vehicle(self, stem, accelerations_g=(0.0, 0.1, 0.2, 0.3, 0.4)):
+        """Steady-state cornering of a bundled vehicle, with the closed form
+        and the understeer gradient.
+
+        :return: dict with ``completed``, ``message``, ``steady``
+            (:func:`suspension.car.steady_state`), ``closed``
+            (:func:`suspension.car.closed_form`), ``understeer`` (rad/g),
+            and ``name``
+        """
+        car = self.engine.car
+        mbs = self.engine.mbs
+        self.warnings = []
+        try:
+            vm = car.VehicleModel.load(stem)
+            steady = car.steady_state(mbs, vm, accelerations_g)
+            closed = car.closed_form(mbs, vm)
+            kus = car.understeer_gradient(vm, steady['roll_steer'])
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None, f"vehicle analysis failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        return {'completed': True, 'message': '', 'steady': steady,
+                'closed': closed, 'understeer': kus, 'name': vm.name,
+                'wheelbase': vm.wheelbase}
+
+    def run_step_steer(self, stem, speed_kmh, rack_mm, understeer=None,
+                       duration=4.0):
+        """A step steer of a bundled vehicle, with the steady yaw rate of
+        the linear bicycle model (understeer gradient from the steady-state
+        rig).
+
+        :return: dict with ``completed``, ``message``, the run of
+            :func:`suspension.car.step_steer`, ``delta`` (rad, the front
+            wheel angle of the rack at rest), and ``bicycle_yaw_rate``
+            (rad/s)
+        """
+        car = self.engine.car
+        mbs = self.engine.mbs
+        self.warnings = []
+        try:
+            vm = car.VehicleModel.load(stem)
+            if understeer is None:
+                steady = car.steady_state(mbs, vm, (0.0, 0.05, 0.1))
+                understeer = car.understeer_gradient(vm,
+                                                     steady['roll_steer'])
+            rack = float(rack_mm) / MM
+            run = car.step_steer(mbs, vm, float(speed_kmh) / 3.6, rack,
+                                 duration=duration)
+            delta = car.kinematic_steer(mbs, vm, rack)
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None, f"step steer failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        v = float(run['steady']['speed'])
+        run.update({'completed': True, 'message': '', 'delta': delta,
+                    'understeer': understeer,
+                    'bicycle_yaw_rate': v * delta / (
+                        vm.wheelbase + understeer * v * v / 9.81)})
+        return run
+
     def road_input(self, kind, params, sprung_mass=200.0):
         """Build the :class:`suspension.road.RoadInput` of a road input.
 
@@ -1239,6 +1370,22 @@ class SuspensionSession(object):
         """
         return make_road_input(self.engine, self.model(), kind, params,
                                sprung_mass)
+
+
+def _curve_text(model):
+    """The damper curve of a model in words: the low-speed slopes and the
+    force at the fastest table point of each direction."""
+    curve = model.damper_curve
+    mod = sys.modules[type(model).__module__]
+    bump = mod.curve_slope(curve, -1e-9) * 1.e-3
+    rebound = mod.curve_slope(curve, 1e-9) * 1.e-3
+    return (f"curve: bump {bump:g}, rebound {rebound:g} N.s/mm at low "
+            f"speed; {curve[1][0]:.0f} N at {curve[0][0] * MM:g} mm/s to "
+            f"{curve[1][-1]:.0f} N at {curve[0][-1] * MM:g} mm/s")
+
+
+#: ISO 8608 road classes for the ride analysis.
+ROAD_CLASSES = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H')
 
 
 def road_pass_time(road_input):

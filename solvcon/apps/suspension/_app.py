@@ -75,6 +75,8 @@ class SuspensionApp(base.PilotFeature):
         self._geometry_setup = None
         #: The geometry of the model :attr:`run` was built from.
         self._run_geometry = None
+        #: The understeer gradient of each vehicle the Vehicle tab solved.
+        self._understeer = {}
         #: The geometries the view shows instead of the sweep, or False.
         self._showing_run = False
         self.overlays = set()
@@ -162,7 +164,10 @@ class SuspensionApp(base.PilotFeature):
                     'profile': self.on_profile,
                     'profile_import': self.on_profile_import,
                     'profile_cursor': self.on_profile_cursor,
-                    'road_csv': self.on_road_csv}
+                    'road_csv': self.on_road_csv, 'ride': self.on_ride,
+                    'ride_time': self.on_ride_time,
+                    'vehicle': self.on_vehicle,
+                    'step_steer': self.on_step_steer}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
@@ -173,6 +178,7 @@ class SuspensionApp(base.PilotFeature):
         self.analysis = _window.AnalysisPanel(handlers)
         self.analysis.warnings.picked = self.tree.select
         self.analysis.sweep.runs.changed = self.on_run_list
+        self.analysis.vehicle.show_vehicles(self.session.vehicles())
         self.view.picked = self.on_point_picked
         main = self._mgr.mainWindow
         for title, widget, area in (
@@ -406,6 +412,7 @@ class SuspensionApp(base.PilotFeature):
             or self.DEFAULT_SPRUNG_MASS
         self.analysis.dynamics.mass.setValue(float(mass))
         self.analysis.modal.mass.setValue(float(mass))
+        self.analysis.ride.mass.setValue(float(mass))
         self.refresh()
         return True
 
@@ -425,6 +432,7 @@ class SuspensionApp(base.PilotFeature):
             self.analysis.dynamics.clear()
             self.analysis.modal.clear()
             self.analysis.statics.clear()
+            self.analysis.ride.clear()
 
     def on_export(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -483,6 +491,57 @@ class SuspensionApp(base.PilotFeature):
         else:
             tab.status.setText(f"failed, the table keeps the last valid "
                                f"modes: {out['message']}")
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    def on_ride(self, road_class, speed_kmh, mass):
+        tab = self.analysis.ride
+        out = self._busy(tab.status, "solving the linear ride response...",
+                         lambda: self.session.run_ride(road_class, speed_kmh,
+                                                       mass))
+        if out['completed']:
+            tab.show_response(out)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    def on_ride_time(self, road_class, speed_kmh, mass):
+        tab = self.analysis.ride
+        if not tab.status.text():
+            self.on_ride(road_class, speed_kmh, mass)
+        before = tab.status.text()
+        out = self._busy(tab.status, "marching the quarter car over a "
+                                     "random road (12 s)...",
+                         lambda: self.session.run_ride_time(
+                             road_class, speed_kmh, mass))
+        tab.status.setText(before)
+        if out['completed']:
+            tab.show_time(out)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    def on_vehicle(self, stem):
+        tab = self.analysis.vehicle
+        out = self._busy(tab.status, "solving the steady turns...",
+                         lambda: self.session.run_vehicle(stem))
+        if out['completed']:
+            self._understeer[stem] = out['understeer']
+            tab.show_steady(out)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    def on_step_steer(self, stem, speed_kmh, rack_mm):
+        tab = self.analysis.vehicle
+        out = self._busy(tab.status, "marching the step steer (4 s)...",
+                         lambda: self.session.run_step_steer(
+                             stem, speed_kmh, rack_mm,
+                             self._understeer.get(stem)))
+        if out['completed']:
+            self._understeer[stem] = out['understeer']
+            tab.show_step(out)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
 
     def on_dynamics(self):

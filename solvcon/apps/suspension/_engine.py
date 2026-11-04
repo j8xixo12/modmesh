@@ -31,8 +31,9 @@ class Engine(object):
     :ivar mbs: The :mod:`solvcon.multibody` module.
     """
 
-    MODULES = ('alignment', 'axle', 'compliance', 'corner', 'kc', 'metrics',
-               'model', 'reference', 'road', 'sensitivity', 'vehicle')
+    MODULES = ('alignment', 'axle', 'car', 'compliance', 'corner', 'kc',
+               'metrics', 'model', 'reference', 'ride', 'road', 'sensitivity',
+               'vehicle')
 
     def __init__(self, mbs, modules):
         self.mbs = mbs
