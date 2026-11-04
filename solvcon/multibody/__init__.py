@@ -28,6 +28,7 @@ __all__ = [
     'HAS_MULTIBODY',
     'FEATURE_ROAD_TIRE',
     'FEATURE_LENGTH_STOP',
+    'FEATURE_CURVE_DAMPER',
     'Body',
     'Ground',
     'MobilizedBody',
@@ -66,11 +67,14 @@ __all__ = [
     'create_bushing',
     'create_tire',
     'create_length_stop',
+    'create_curve_damper',
+    'curve_damper_force',
     'create_rsda',
     'create_python_force',
     'get_force_element_loads',
     'get_tire_state',
     'get_length_stop_state',
+    'get_curve_damper_state',
     'modal_analysis',
 ]
 

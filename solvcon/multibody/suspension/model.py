@@ -20,6 +20,86 @@ DATA_DIR = Path(__file__).parent / "data"
 MM = 1e-3
 
 
+def damper_table(spec):
+    """The force-velocity table of a damper block, in SI.
+
+    A ``table`` block lists the curve: ``velocity`` (mm/s, > 0 rebound) and
+    ``force`` (N, > 0 in rebound).  An ``asymmetric`` block gives the slopes
+    in N.s/mm: ``bump`` and ``rebound``, each one value (linear) or a pair
+    (low-speed and high-speed slope, a digressive curve), and ``knee``, the
+    speed (mm/s) where the slope changes.
+
+    :param spec: the damper block of a model file
+    :type spec: dict
+    :return: (velocities in m/s, forces in N), velocities increasing
+    :rtype: tuple
+    :raises ValueError: for an unknown kind or a bad curve
+    """
+    kind = spec.get("kind", "asymmetric")
+    if "table" == kind:
+        velocities = [float(v) * MM for v in spec["velocity"]]
+        forces = [float(f) for f in spec["force"]]
+    elif "asymmetric" == kind:
+        def slopes(value):
+            pair = value if isinstance(value, (list, tuple)) else \
+                [value, value]
+            if len(pair) != 2 or min(pair) < 0.0:
+                raise ValueError("damper: a slope is one value or a "
+                                 "(low-speed, high-speed) pair, not "
+                                 "negative")
+            return [float(c) * 1e3 for c in pair]
+
+        bump, rebound = slopes(spec["bump"]), slopes(spec["rebound"])
+        knee = float(spec.get("knee", 100.0)) * MM
+        if knee <= 0.0:
+            raise ValueError("damper: the knee speed must be positive")
+        # Two points past each knee: the end segments carry the high-speed
+        # slopes outward.
+        velocities = [-2.0 * knee, -knee, 0.0, knee, 2.0 * knee]
+        forces = [-(bump[0] + bump[1]) * knee, -bump[0] * knee, 0.0,
+                  rebound[0] * knee, (rebound[0] + rebound[1]) * knee]
+    else:
+        raise ValueError(f"damper: unknown kind {kind!r} (table or "
+                         "asymmetric)")
+    if len(velocities) != len(forces) or len(velocities) < 2:
+        raise ValueError("damper: the curve needs two or more points")
+    if any(b <= a for a, b in zip(velocities[:-1], velocities[1:])):
+        raise ValueError("damper: the velocities must increase")
+    if any(f * v < 0.0 for v, f in zip(velocities, forces)):
+        raise ValueError("damper: the curve must be passive: the force "
+                         "has the sign of the velocity")
+    return velocities, forces
+
+
+def damper_force(curve, velocity):
+    """The force (N) of a damper curve at ``velocity`` (m/s): piecewise
+    linear, extended with the slopes of the end segments (the engine curve
+    damper does the same).
+
+    :param curve: (velocities, forces) of :func:`damper_table`
+    :type curve: tuple
+    :param velocity: damper rate, > 0 in rebound; a scalar or an array
+    :rtype: float or numpy.ndarray
+    """
+    vs = np.asarray(curve[0], dtype="float64")
+    fs = np.asarray(curve[1], dtype="float64")
+    v = np.asarray(velocity, dtype="float64")
+    hi = np.clip(np.searchsorted(vs, v, side="right"), 1, len(vs) - 1)
+    lo = hi - 1
+    slope = (fs[hi] - fs[lo]) / (vs[hi] - vs[lo])
+    out = fs[lo] + slope * (v - vs[lo])
+    return float(out) if out.ndim == 0 else out
+
+
+def curve_slope(curve, velocity):
+    """The slope dF/dv (N.s/m) of a damper curve at ``velocity``."""
+    vs = np.asarray(curve[0], dtype="float64")
+    fs = np.asarray(curve[1], dtype="float64")
+    hi = int(np.clip(np.searchsorted(vs, velocity, side="right"), 1,
+                     len(vs) - 1))
+    return float((fs[hi] - fs[hi - 1]) / (vs[hi] - vs[hi - 1]))
+
+
 class CornerModel:
     """Geometry and properties of one suspension corner in SI units.
 
@@ -166,8 +246,18 @@ class CornerModel:
                 "the upright; exactly 5 leave the wheel travel as its one "
                 "degree of freedom")
         self.spring_k = s["k"] * 1e3
-        self.spring_c = s["c"] * 1e3
+        # The linear damper (N.s/m); a damper block below replaces it.
+        self.spring_c = s["c"] * 1e3 if "damper" not in s else 0.0
         self.spring_free_offset = s.get("free_length_offset", 0.0) * MM
+        # The damper force-velocity curve ((velocities m/s, forces N), the
+        # rate > 0 in rebound), or None for the linear damper spring_c.
+        self.damper_curve = None
+        if "damper" in s:
+            self.damper_curve = damper_table(s["damper"])
+            # The linear analyses (K&C, modes, the linear ride response)
+            # use the mean of the bump and rebound slopes at zero speed.
+            self.spring_c = 0.5 * (curve_slope(self.damper_curve, -1e-9)
+                                   + curve_slope(self.damper_curve, 1e-9))
         # Travel stops on the spring line (bump stop, droop stop), in SI:
         # the wheel travels (m) where they touch, rates N/m and N/m^2, and
         # damping N.s/m.  None: the corner has no stops.

@@ -266,10 +266,18 @@ def add_corner(mbs, sys_obj, model, ground, chassis, chassis_origin, first_num,
             arm_frame(model, model.spring_on)[0]
     spring_len = float(np.linalg.norm(
         origin + local - model.chassis_point("spring_chassis")))
-    c.spring = mbs.create_spring_damper(spring_on, chassis, list(local),
-                                        spring_chassis, model.spring_k,
-                                        model.spring_c,
-                                        spring_len + model.spring_free_offset)
+    free_length = spring_len + model.spring_free_offset
+    if model.damper_curve is None:
+        c.spring = mbs.create_spring_damper(spring_on, chassis, list(local),
+                                            spring_chassis, model.spring_k,
+                                            model.spring_c, free_length)
+    else:
+        # The spring and the damper act on one line: the length rate > 0
+        # (rebound) is the curve's positive velocity.
+        c.spring = mbs.create_curve_damper(
+            spring_on, chassis, list(local), spring_chassis, model.spring_k,
+            free_length, list(model.damper_curve[0]),
+            list(model.damper_curve[1]))
     sys_obj.Add(c.spring)
     c.spring_points = (np.array(local),
                        np.array(model.chassis_point("spring_chassis") - co))

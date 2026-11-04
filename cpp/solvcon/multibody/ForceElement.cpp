@@ -203,6 +203,68 @@ void Bushing::compute()
     m_torque_j = tj + cross(arm_j, fj);
 }
 
+CurveDamper::CurveDamper(BodyPtr body_i, BodyPtr body_j, Vector3 const & point_i, Vector3 const & point_j, double k, double free_length, std::vector<double> velocities, std::vector<double> forces)
+    : ForceElement(std::move(body_i), std::move(body_j), point_i, point_j, k, 0.0, free_length, 0.0)
+    , m_velocities(std::move(velocities))
+    , m_forces(std::move(forces))
+{
+    if (m_velocities.size() != m_forces.size() || m_velocities.size() < 2)
+    {
+        throw std::invalid_argument("CurveDamper: the table needs at least two (velocity, force) points");
+    }
+    for (size_t it = 0; it < m_velocities.size(); ++it)
+    {
+        if (!std::isfinite(m_velocities[it]) || !std::isfinite(m_forces[it]))
+        {
+            throw std::invalid_argument("CurveDamper: the table values must be finite");
+        }
+        if (it > 0 && !(m_velocities[it] > m_velocities[it - 1]))
+        {
+            throw std::invalid_argument("CurveDamper: the table velocities must increase strictly");
+        }
+        if (m_forces[it] * m_velocities[it] < 0.0)
+        {
+            throw std::invalid_argument("CurveDamper: the curve must be passive (F(v) v >= 0)");
+        }
+    }
+}
+
+double CurveDamper::damper_force(double velocity) const
+{
+    auto const & vs = m_velocities;
+    auto const & fs = m_forces;
+    // The segment that holds the velocity; the end segments extend outward.
+    size_t hi = static_cast<size_t>(std::upper_bound(vs.begin(), vs.end(), velocity) - vs.begin());
+    hi = std::clamp<size_t>(hi, 1, vs.size() - 1);
+    size_t const lo = hi - 1;
+    double const slope = (fs[hi] - fs[lo]) / (vs[hi] - vs[lo]);
+    return fs[lo] + slope * (velocity - vs[lo]);
+}
+
+void CurveDamper::compute()
+{
+    Vector3 const arm_i = transpose_mul(m_body_i->tbi(), m_point_i);
+    Vector3 const arm_j = transpose_mul(m_body_j->tbi(), m_point_j);
+    Vector3 const d = (m_body_j->position() + arm_j) - (m_body_i->position() + arm_i);
+    m_length = norm(d);
+    if (m_length < 1e-12)
+    {
+        m_force_i = m_force_j = m_torque_i = m_torque_j = Vector3();
+        m_length_rate = m_damper_force = 0.0;
+        return;
+    }
+    Vector3 const n = d / m_length;
+    Vector3 const vi = m_body_i->velocity() + cross(m_body_i->angular_velocity(), arm_i);
+    Vector3 const vj = m_body_j->velocity() + cross(m_body_j->angular_velocity(), arm_j);
+    m_length_rate = dot(vj - vi, n);
+    m_damper_force = damper_force(m_length_rate);
+    double const tension = m_k * (m_length - m_free_length) + m_damper_force;
+    m_force_i = tension * n;
+    m_force_j = -tension * n;
+    m_torque_i = cross(arm_i, m_force_i);
+    m_torque_j = cross(arm_j, m_force_j);
+}
+
 LengthStop::LengthStop(BodyPtr body_i, BodyPtr body_j, Vector3 const & point_i, Vector3 const & point_j, double min_length, double max_length, double k, double k2, double c)
     : ForceElement(std::move(body_i), std::move(body_j), point_i, point_j, k, c, 0.0, 0.0)
     , m_min_length(min_length)

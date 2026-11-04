@@ -787,6 +787,62 @@ void wrap_factories(py::module & mod)
         "it pushes them apart, above max_length (droop stop) it pulls them together, with "
         "f = max(0, k d + k2 d^2 + c dd/dt) for the penetration d. None disables a limit.");
     mod.def(
+        "create_curve_damper",
+        [](mb::BodyPtr body_i, mb::BodyPtr body_j, std::vector<double> const & pi, std::vector<double> const & pj, double k, double free_length, std::vector<double> velocities, std::vector<double> forces) -> mb::ForceElementPtr
+        {
+            try
+            {
+                return std::make_shared<mb::CurveDamper>(std::move(body_i), std::move(body_j), to_vector3(pi, "point_i"), to_vector3(pj, "point_j"), k, free_length, std::move(velocities), std::move(forces));
+            }
+            catch (std::invalid_argument const & e)
+            {
+                throw py::value_error(e.what());
+            }
+        },
+        py::arg("body_i"),
+        py::arg("body_j"),
+        py::arg("point_i"),
+        py::arg("point_j"),
+        py::arg("k"),
+        py::arg("free_length"),
+        py::arg("velocities"),
+        py::arg("forces"),
+        "Spring-damper with a damper force-velocity curve: tension f = k (L - L0) + F(dL/dt), "
+        "F piecewise linear through (velocities, forces), extended with the end slopes; "
+        "dL/dt > 0 is rebound (extension), F > 0 tension.");
+    mod.def(
+        "get_curve_damper_state",
+        [](mb::ForceElementPtr const & fe)
+        {
+            auto damper = std::dynamic_pointer_cast<mb::CurveDamper>(fe);
+            if (!damper)
+            {
+                throw py::type_error("get_curve_damper_state: not a curve damper");
+            }
+            py::dict d;
+            d["length"] = damper->length();
+            d["velocity"] = damper->length_rate();
+            d["damper_force"] = damper->last_damper_force();
+            return d;
+        },
+        py::arg("damper"),
+        "Length (m), rate dL/dt (m/s), and damper force (N, tension positive) of a curve "
+        "damper at the last evaluation.");
+    mod.def(
+        "curve_damper_force",
+        [](mb::ForceElementPtr const & fe, double velocity)
+        {
+            auto damper = std::dynamic_pointer_cast<mb::CurveDamper>(fe);
+            if (!damper)
+            {
+                throw py::type_error("curve_damper_force: not a curve damper");
+            }
+            return damper->damper_force(velocity);
+        },
+        py::arg("damper"),
+        py::arg("velocity"),
+        "The damper force F(v) (N) of a curve damper at the rate v (m/s).");
+    mod.def(
         "get_length_stop_state",
         [](mb::ForceElementPtr const & fe)
         {
@@ -916,6 +972,7 @@ void wrap_multibody(pybind11::module & mod)
     mod.attr("HAS_MULTIBODY") = true;
     mod.attr("FEATURE_ROAD_TIRE") = true;
     mod.attr("FEATURE_LENGTH_STOP") = true;
+    mod.attr("FEATURE_CURVE_DAMPER") = true;
 
     // Identity round trips kept for scripts written for the standalone module.
     mod.def("vec_to_list", [](std::vector<double> const & v)

@@ -21,6 +21,7 @@
 #include <solvcon/buffer/buffer.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace solvcon
 {
@@ -167,6 +168,52 @@ private:
     Vector3 m_rotation;
 
 }; /* end class Bushing */
+
+/**
+ * Spring-damper whose damper force follows a force-velocity curve (a
+ * measured or specified damper characteristic).  With L the length and v =
+ * dL/dt (v > 0 extends the damper: rebound), the tension is
+ *
+ *   f = k (L - L0) + F(v),
+ *
+ * where F is the piecewise-linear curve through the table points (v_n, F_n)
+ * and extends past the first and the last point with the slope of the end
+ * segment.  F(v) > 0 is tension (rebound), F(v) < 0 compression (bump).
+ * The table needs at least two points, strictly increasing velocities, and a
+ * passive curve: F(v) v >= 0 at every point.
+ */
+class CurveDamper
+    : public ForceElement
+{
+
+public:
+
+    /**
+     * @param velocities  Table velocities v_n (m/s), strictly increasing.
+     * @param forces  Table forces F_n (N), tension positive.
+     * @throws std::invalid_argument for a bad table.
+     */
+    CurveDamper(BodyPtr body_i, BodyPtr body_j, Vector3 const & point_i, Vector3 const & point_j, double k, double free_length, std::vector<double> velocities, std::vector<double> forces);
+    void compute() override;
+    /// The damper force F(v) of the curve (N, tension positive).
+    double damper_force(double velocity) const;
+    /// Length L (m) and rate dL/dt (m/s) at the last evaluation.
+    double length() const { return m_length; }
+    double length_rate() const { return m_length_rate; }
+    /// Damper force (N) at the last evaluation.
+    double last_damper_force() const { return m_damper_force; }
+    std::vector<double> const & velocities() const { return m_velocities; }
+    std::vector<double> const & forces() const { return m_forces; }
+
+private:
+
+    std::vector<double> m_velocities;
+    std::vector<double> m_forces;
+    double m_length = 0.0;
+    double m_length_rate = 0.0;
+    double m_damper_force = 0.0;
+
+}; /* end class CurveDamper */
 
 /**
  * One-sided travel stop along the line between two points (a bump stop and
