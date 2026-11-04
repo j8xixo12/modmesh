@@ -24,6 +24,9 @@ void wrap_states_info(pybind11::module & mod);
 void wrap_kalman_filter(pybind11::module & mod);
 void wrap_EigenSystem(pybind11::module & mod);
 void wrap_LuFactorization(pybind11::module & mod);
+void wrap_QrPivotFactorization(pybind11::module & mod);
+void wrap_SvdFactorization(pybind11::module & mod);
+void wrap_EigenDecomposition(pybind11::module & mod);
 
 } /* end namespace python */
 

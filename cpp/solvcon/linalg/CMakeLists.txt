@@ -9,6 +9,10 @@ set(SOLVCON_LINALG_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/lu_factorization.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kalman_filter.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/EigenSystem.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/dense_util.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/qr_pivot.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/svd.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/eigen_decomposition.hpp
     CACHE FILEPATH "" FORCE)
 
 set(SOLVCON_LINALG_SOURCES
@@ -25,6 +29,9 @@ set(SOLVCON_LINALG_PYMODSOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_kalman_filter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_EigenSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_LuFactorization.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_QrPivotFactorization.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_SvdFactorization.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pymod/wrap_EigenDecomposition.cpp
     CACHE FILEPATH "" FORCE)
 
 set(SOLVCON_LINALG_FILES

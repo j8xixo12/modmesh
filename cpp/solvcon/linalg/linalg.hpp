@@ -12,6 +12,9 @@
 #include <solvcon/linalg/factorization.hpp>
 #include <solvcon/linalg/lu_factorization.hpp>
 #include <solvcon/linalg/kalman_filter.hpp>
+#include <solvcon/linalg/qr_pivot.hpp>
+#include <solvcon/linalg/svd.hpp>
+#include <solvcon/linalg/eigen_decomposition.hpp>
 #ifdef SC_HAS_VENDOR_LAPACK
 #include <solvcon/linalg/EigenSystem.hpp>
 #endif
