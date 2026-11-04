@@ -1,0 +1,176 @@
+{
+  "name": "Four-link front with a virtual kingpin (Audi A4 B5 geometry, Knapczyk & Maniowski 2003)",
+  "type": "four_link_virtual_kingpin",
+  "source": "J. Knapczyk, M. Maniowski, 'Dimensional synthesis of a five-rod guiding mechanism for car front wheels', The Archive of Mechanical Engineering L(1), 89-116, 2003. Target data from Paefgen et al., 'Der neue Audi A4, Teil 2', ATZ 96 (1994) 734-748. https://www.czasopisma.pan.pl//Content/125021/PDF/7_MECHANICAL_50_2003_1_Knapczyk_Dimensional.pdf. Body points and rod lengths of p.109-112 (rods 3-5 inner points are the paper's synthesis); knuckle points given in the knuckle frame, assembled here at s_w = 0 with the knuckle origin o^k at z = 270 mm (the loaded radius). The wheel center is o^k, the point the paper's travel and wheel-center curves refer to. Rack along y (assumed; not given). Masses, spring points, and rates are assumed (the spring points are not printed). The library model puts the wheel center on the tire center plane, 40 mm inboard of o^k. Library model: the geometry is the validation model in tests/data/multibody/knapczyk_audi_a4; masses, spring and damper rates, and stops are assumed for the dynamics.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 270.0,
+    "center": [
+      42.4749,
+      747.8067,
+      270.0
+    ],
+    "spin_axis": [
+      0.0037,
+      0.9999,
+      0.0117
+    ]
+  },
+  "upright": {
+    "mass": 32.0,
+    "inertia": [
+      0.9,
+      1.2,
+      0.9
+    ]
+  },
+  "links": {
+    "lower_front": {
+      "chassis": [
+        187.0,
+        351.5,
+        169.468
+      ],
+      "upright": [
+        73.2011,
+        697.2508,
+        170.944
+      ]
+    },
+    "lower_rear": {
+      "chassis": [
+        -186.5,
+        370.0,
+        151.468
+      ],
+      "upright": [
+        20.8839,
+        693.9635,
+        135.2027
+      ]
+    },
+    "tie_rod": {
+      "rack": [
+        -54.0,
+        385.5,
+        527.468
+      ],
+      "upright": [
+        -102.9128,
+        618.9306,
+        542.9174
+      ]
+    },
+    "upper_rear": {
+      "chassis": [
+        -37.0,
+        398.0,
+        629.468
+      ],
+      "upright": [
+        10.8447,
+        640.4943,
+        655.1517
+      ]
+    },
+    "upper_front": {
+      "chassis": [
+        173.0,
+        433.5,
+        638.468
+      ],
+      "upright": [
+        44.7268,
+        673.7455,
+        657.3642
+      ]
+    }
+  },
+  "rack": {
+    "mass": 1.5,
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "spring": {
+    "upright": [
+      30.4032,
+      678.5839,
+      207.0492
+    ],
+    "chassis": [
+      12.6229,
+      637.8027,
+      670.468
+    ],
+    "k": 30.0,
+    "c": 3.0,
+    "free_length_offset": 0.0,
+    "note": "spring points assumed (not printed in the source; in the car the damper sits on rod 1)"
+  },
+  "stops": {
+    "bump_travel": 80.0,
+    "droop_travel": -80.0,
+    "k": 100.0,
+    "k2": 50.0,
+    "c": 1.0
+  },
+  "steer_axis": "instant",
+  "adjusters": {
+    "camber_shim": {
+      "kind": "upright_point",
+      "points": [
+        "upper_front_outer",
+        "upper_rear_outer"
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "note": "+ spaces the upper joints outboard (more negative camber)"
+    },
+    "caster_shim": {
+      "kind": "joint_in_car",
+      "points": [
+        "upper_front_outer",
+        "upper_rear_outer"
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "note": "+ moves the upper joints forward (less caster)"
+    },
+    "toe_link": {
+      "kind": "link_length",
+      "link": "tie_rod",
+      "sign": 1.0,
+      "note": "+ lengthens the tie rod"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 2617.0,
+    "cg_height": 540.0,
+    "front_brake_fraction": 0.7,
+    "half_track": 747.5,
+    "corner_mass": 400.0
+  },
+  "tire": {
+    "k": 220.0,
+    "c": 0.1
+  },
+  "bushings": {
+    "k": 3000.0,
+    "k_rot": 30.0
+  }
+}

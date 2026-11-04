@@ -1,0 +1,71 @@
+{
+  "name": "Semi-trailing arm rear, Skoda 130 RS, measured (Vondrak 2013, Brno)",
+  "type": "semi_trailing_arm",
+  "source": "Zdenek Vondrak, 'Konstrukcni navrh uhlove kyvadlove napravy' (Mechanical Design of Semi-Trailing Arm Suspension), Master's thesis, Brno University of Technology, Faculty of Mechanical Engineering, Institute of Automotive Engineering, 2013. Supervisor Ing. Petr Hejtmanek. Vehicle: Skoda 130 RS racing car rear axle. https://dspace.vut.cz/server/api/core/bitstreams/f3edc79f-1eab-4307-bfb1-9e6ea733b1a0/content. Left points of Tab.1 (photogrammetry, GOM TRITOP) at the measured, fully drooped pose; x is moved to the hub face point. The wheel offset is not given (wheel center = hub face point, assumed); radius 265 mm (thesis p.22). Masses and rates are assumed.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 265.0,
+    "center": [
+      0.0,
+      699.7,
+      265.0
+    ],
+    "spin_axis": [
+      0.0082,
+      0.9998,
+      -0.0176
+    ]
+  },
+  "upright": {
+    "mass": 25.0,
+    "inertia": [
+      0.8,
+      1.0,
+      0.9
+    ]
+  },
+  "links": {},
+  "arm": {
+    "inner": [
+      330.06,
+      195.66,
+      306.94
+    ],
+    "outer": [
+      383.59,
+      500.2,
+      309.29
+    ]
+  },
+  "spring": {
+    "upright": [
+      -110.34,
+      450.63,
+      268.76
+    ],
+    "chassis": [
+      -105.43,
+      445.01,
+      680.3
+    ],
+    "k": 60.0,
+    "c": 3.0,
+    "free_length_offset": 0.0,
+    "note": "coil-over on the damper points; rates assumed"
+  },
+  "adjusters": {},
+  "tire": {
+    "k": 200.0,
+    "c": 0.1
+  },
+  "bushings": {
+    "k": 5000.0,
+    "k_rot": 30.0
+  }
+}

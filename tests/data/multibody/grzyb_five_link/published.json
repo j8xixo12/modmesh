@@ -1,0 +1,164 @@
+{
+  "source": "A. Grzyb, M. Kowalski, 'Optimisation of five-link suspension mechanism of a vehicle solid tyres', Engineering Transactions 49(1), 47-63, 2001 (IPPT PAN). doi:10.24423/engtrans.573.2001",
+  "url": "https://et.ippt.pan.pl/index.php/et/article/view/573",
+  "figures": "p.50 Fig.2 (scheme), p.52 point definitions, eqs (3.5),(3.6) p.53, p.57 coordinates (original), p.58 optimized A_i + Fig.3 (steer angle), p.59 Fig.4 (camber)",
+  "angle_definitions": "delta = arctan((x_B6-x_B7)/(y_B7-y_B6)) (eq 3.5); gamma = arctan((z_B7-z_B6)/sqrt((x_B7-x_B6)^2+(y_B7-y_B6)^2)) (eq 3.6)",
+  "travel_definition": "s = vertical displacement of point B7 [mm], range -100..100, positive up",
+  "points": {
+    "B6": [
+      -0.4,
+      605.0,
+      300.5
+    ],
+    "B7": [
+      0.0,
+      705.0,
+      302.0
+    ]
+  },
+  "curves": {
+    "steer_angle_changed": {
+      "travel": [
+        -100,
+        -95,
+        -90,
+        -80,
+        -70,
+        -60,
+        -50,
+        -40,
+        -30,
+        -20,
+        -10,
+        0,
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+        70,
+        80,
+        90,
+        95,
+        100
+      ],
+      "value": [
+        -0.03,
+        -0.047,
+        -0.065,
+        -0.097,
+        -0.129,
+        -0.152,
+        -0.179,
+        -0.19,
+        -0.208,
+        -0.22,
+        -0.23,
+        -0.225,
+        -0.225,
+        -0.223,
+        -0.212,
+        -0.192,
+        -0.178,
+        -0.158,
+        -0.124,
+        -0.088,
+        -0.045,
+        -0.024,
+        0.0
+      ],
+      "unit": "deg",
+      "how_read": "digitized from Fig.3 solid line (scanned, slightly skewed), uncertainty +-0.01 deg; s=-100,0,10,100 read by eye"
+    },
+    "steer_angle_original": {
+      "travel": [
+        -100,
+        -90,
+        60,
+        90,
+        100
+      ],
+      "value": [
+        0.03,
+        -0.008,
+        -0.173,
+        -0.078,
+        -0.04
+      ],
+      "unit": "deg",
+      "how_read": "digitized from Fig.3 dashed line where separable from solid; elsewhere coincident with solid within ~0.01 deg; uncertainty +-0.015 deg"
+    },
+    "camber_changed": {
+      "travel": [
+        -95,
+        -90,
+        -80,
+        -70,
+        -60,
+        -50,
+        -40,
+        -30,
+        -20,
+        -10,
+        0,
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+        70,
+        80,
+        95
+      ],
+      "value": [
+        -1.777,
+        -1.647,
+        -1.38,
+        -1.087,
+        -0.832,
+        -0.535,
+        -0.301,
+        -0.043,
+        0.269,
+        0.546,
+        0.862,
+        1.149,
+        1.468,
+        1.827,
+        2.134,
+        2.522,
+        2.837,
+        3.168,
+        3.533,
+        4.145
+      ],
+      "unit": "deg",
+      "how_read": "digitized from Fig.4 solid line, uncertainty +-0.05 deg"
+    },
+    "camber_original": {
+      "travel": [
+        -90,
+        -80,
+        -70,
+        -60,
+        70,
+        80,
+        95
+      ],
+      "value": [
+        -1.913,
+        -1.609,
+        -1.31,
+        -1.043,
+        3.37,
+        3.728,
+        4.413
+      ],
+      "unit": "deg",
+      "how_read": "digitized from Fig.4 dashed line where separable, uncertainty +-0.05 deg"
+    }
+  },
+  "independent_check": "Own 5-SS solver with these points reproduces both curves of Figs 3 and 4 (original and changed) within the digitizing uncertainty (camber within ~0.07 deg, steer within ~0.01 deg). gamma(0)=0.859 deg and delta(0)=-0.229 deg follow directly from B6,B7."
+}

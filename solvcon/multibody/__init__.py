@@ -13,7 +13,8 @@ sweep arrays ``SimpleArrayInt32``); ``numpy.asarray`` reads them without a
 copy.  Lists and dicts of scalars stay Python objects.  Inputs take Python
 sequences and numpy arrays.
 
-The subpackages are imported on demand: ``tools`` (helpers around the
+The subpackages are imported on demand: ``suspension`` (suspension
+kinematics and compliance on the engine), ``tools`` (helpers around the
 engine), ``tmm`` (the transfer matrix method, a second engine in numpy), and
 ``models`` (Haug book examples, validation benchmarks, example mechanisms).
 """

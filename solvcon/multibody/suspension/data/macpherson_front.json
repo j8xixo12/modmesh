@@ -1,0 +1,162 @@
+{
+  "name": "MacPherson strut front, CEVT passenger car (Yang 2019, Chalmers)",
+  "type": "macpherson",
+  "source": "Xunbo Yang, 'Suspension Kinematics Programme', Master's thesis in Automotive Engineering, Chalmers University of Technology, Dept. of Mechanics and Maritime Sciences, Gothenburg, 2019. Industrial partner CEVT (China Euro Vehicle Technology). Validation against MSC ADAMS/Car. https://odr.chalmers.se/server/api/core/bitstreams/04f5c74e-06bd-4afb-a74f-633217050d8e/content. Hardpoints from Fig 4.1 (thesis p.51), loaded tire radius and travel from Table 4.1; the thesis axes (x rearward, y right) are turned half a turn about z to ISO 8855 and the origin is on the ground below the wheel center. Masses, spring and damper rates are not in the source and are assumed. Library model: the geometry is the validation model in tests/data/multibody/chalmers_macpherson; masses, spring and damper rates, and stops are assumed for the dynamics.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 331.8,
+    "center": [
+      -0.0,
+      793.8,
+      331.8
+    ],
+    "spin_axis": [
+      -0.0,
+      0.9999,
+      0.0157
+    ]
+  },
+  "upright": {
+    "mass": 35.0,
+    "inertia": [
+      0.9,
+      1.3,
+      0.9
+    ]
+  },
+  "links": {
+    "lower_front": {
+      "chassis": [
+        -17.88,
+        373.0,
+        245.7529
+      ],
+      "upright": [
+        12.92,
+        766.0,
+        217.2529
+      ]
+    },
+    "lower_rear": {
+      "chassis": [
+        -301.68,
+        408.0,
+        252.7529
+      ],
+      "upright": [
+        12.92,
+        766.0,
+        217.2529
+      ]
+    },
+    "tie_rod": {
+      "rack": [
+        -194.68,
+        370.0,
+        308.2529
+      ],
+      "upright": [
+        -151.18,
+        732.518,
+        295.3529
+      ]
+    }
+  },
+  "rack": {
+    "mass": 1.5,
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "strut": {
+    "upright": [
+      -0.328,
+      645.989,
+      397.3819
+    ],
+    "top_mount": [
+      -53.541,
+      589.724,
+      900.2239
+    ]
+  },
+  "spring": {
+    "upright": [
+      -40.28,
+      643.5,
+      719.2529
+    ],
+    "chassis": [
+      -52.6,
+      590.719,
+      891.3279
+    ],
+    "k": 30.0,
+    "c": 3.0,
+    "free_length_offset": 0.0,
+    "note": "coil spring seats hp59 (strut tube) and hp58 (top mount); rates assumed"
+  },
+  "stops": {
+    "bump_travel": 80.0,
+    "droop_travel": -110.0,
+    "k": 100.0,
+    "k2": 50.0,
+    "c": 1.0,
+    "note": "at the ends of the published travel range"
+  },
+  "adjusters": {
+    "camber_shim": {
+      "kind": "chassis_point",
+      "points": [
+        "strut_inner"
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "note": "camber plate: + moves the top mount inboard (more negative camber)"
+    },
+    "caster_shim": {
+      "kind": "chassis_point",
+      "points": [
+        "strut_inner"
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "note": "+ moves the top mount forward (less caster)"
+    },
+    "toe_link": {
+      "kind": "link_length",
+      "link": "tie_rod",
+      "sign": 1.0,
+      "note": "+ lengthens the tie rod"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 2730.0,
+    "cg_height": 550.0,
+    "front_brake_fraction": 0.7,
+    "half_track": 793.8,
+    "corner_mass": 400.0
+  },
+  "tire": {
+    "k": 230.0,
+    "c": 0.1
+  },
+  "bushings": {
+    "k": 3000.0,
+    "k_rot": 30.0
+  }
+}

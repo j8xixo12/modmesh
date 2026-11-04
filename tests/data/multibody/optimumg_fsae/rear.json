@@ -1,0 +1,147 @@
+{
+ "name": "OptimumG generic FSAE, rear left",
+ "source": "OptimumG, \"OptimumKinematics - Generic FSAE Case Study\" (May 2015), http://downloads.optimumg.com/Technical_Papers/OptimumKinematics_Case_Study_Generic_Formula_Student_Car.pdf, hardpoints from slide 26 (front) / 33 (rear). Used here only to validate the kinematics. The wheel is the ground contact point (the case study gives a tire diameter of 0); the static camber is the wheel setting of the case study. The pull/pushrod attaches to the arm in the car; here it attaches to the upright, which does not change the upright kinematics (camber, toe, axis geometry).",
+ "units": {
+  "length": "mm",
+  "mass": "kg",
+  "stiffness": "N/mm",
+  "damping": "N.s/mm"
+ },
+ "side": "left",
+ "wheel": {
+  "radius": 0.0,
+  "center": [
+   0.0,
+   525.0,
+   0.0
+  ],
+  "spin_axis": [
+   0.0,
+   0.9998476951563913,
+   0.01745240643728351
+  ]
+ },
+ "upright": {
+  "mass": 10.0,
+  "inertia": [
+   0.1,
+   0.1,
+   0.1
+  ]
+ },
+ "links": {
+  "lower_front": {
+   "chassis": [
+    156.5,
+    185,
+    130
+   ],
+   "upright": [
+    31.5,
+    464,
+    153
+   ]
+  },
+  "lower_rear": {
+   "chassis": [
+    -103.5,
+    185,
+    125
+   ],
+   "upright": [
+    31.5,
+    464,
+    153
+   ]
+  },
+  "upper_front": {
+   "chassis": [
+    176.5,
+    215,
+    250
+   ],
+   "upright": [
+    -3.5,
+    464,
+    323
+   ]
+  },
+  "upper_rear": {
+   "chassis": [
+    -93.5,
+    215,
+    255
+   ],
+   "upright": [
+    -3.5,
+    464,
+    323
+   ]
+  },
+  "tie_rod": {
+   "rack": [
+    -128.5,
+    185,
+    125
+   ],
+   "upright": [
+    -68.5,
+    464,
+    153
+   ]
+  }
+ },
+ "rack": {
+  "mass": 1.0,
+  "axis": [
+   0.0,
+   1.0,
+   0.0
+  ]
+ },
+ "pushrod": {
+  "upright": [
+   -10.96,
+   425.4,
+   289.83
+  ],
+  "rocker": [
+   -56.55,
+   203.45,
+   133.44
+  ]
+ },
+ "rocker": {
+  "pivot": [
+   -45.74,
+   208.71,
+   101.73
+  ],
+  "axis": [
+   0.1509670909590603,
+   -0.5913679040752998,
+   0.792144519312572
+  ],
+  "mass": 0.3,
+  "inertia": [
+   0.001,
+   0.001,
+   0.001
+  ],
+  "spring_point": [
+   -1.61,
+   242.67,
+   151.49
+  ]
+ },
+ "spring": {
+  "chassis": [
+   147.73,
+   191.81,
+   81.5
+  ],
+  "k": 190.0,
+  "c": 1.0
+ },
+ "adjusters": {}
+}

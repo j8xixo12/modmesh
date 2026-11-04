@@ -1,0 +1,220 @@
+{
+  "name": "FSAE front, double wishbone, pullrod (OptimumG generic FSAE hardpoints)",
+  "type": "double_wishbone_pullrod",
+  "source": "OptimumG, \"OptimumKinematics - Generic FSAE Case Study\" (May 2015), http://downloads.optimumg.com/Technical_Papers/OptimumKinematics_Case_Study_Generic_Formula_Student_Car.pdf, hardpoints from slide 26 (front) / 33 (rear). The library model adds an 18 in tire (radius 228.6 mm; the case study uses a tire diameter of 0) and puts the pullrod on the upper wishbone, which reproduces the published coil-over motion ratio (slide 113) within 2 percent.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 228.6,
+    "center": [
+      0.0,
+      525.0,
+      228.6
+    ],
+    "spin_axis": [
+      0.0,
+      0.9993908270190958,
+      0.03489949670250097
+    ]
+  },
+  "upright": {
+    "mass": 8.0,
+    "inertia": [
+      0.12,
+      0.18,
+      0.12
+    ]
+  },
+  "links": {
+    "lower_front": {
+      "chassis": [
+        114.5,
+        210,
+        120
+      ],
+      "upright": [
+        8.5,
+        476,
+        153
+      ]
+    },
+    "lower_rear": {
+      "chassis": [
+        -125.5,
+        210,
+        125
+      ],
+      "upright": [
+        8.5,
+        476,
+        153
+      ]
+    },
+    "upper_front": {
+      "chassis": [
+        119.5,
+        245,
+        255
+      ],
+      "upright": [
+        -9.5,
+        464,
+        323
+      ]
+    },
+    "upper_rear": {
+      "chassis": [
+        -130.5,
+        245,
+        250
+      ],
+      "upright": [
+        -9.5,
+        464,
+        323
+      ]
+    },
+    "tie_rod": {
+      "rack": [
+        65,
+        131,
+        150
+      ],
+      "upright": [
+        72.5,
+        476.59,
+        200.84
+      ]
+    }
+  },
+  "arms": {
+    "upper": {
+      "links": [
+        "upper_front",
+        "upper_rear"
+      ],
+      "mass": 0.8,
+      "inertia": [
+        0.01,
+        0.01,
+        0.02
+      ]
+    }
+  },
+  "rack": {
+    "mass": 1.0,
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "pushrod": {
+    "upright": [
+      -28.61,
+      423.73,
+      287.21
+    ],
+    "rocker": [
+      -87.57,
+      220.85,
+      125.6
+    ],
+    "kind": "pullrod",
+    "on": "upper"
+  },
+  "rocker": {
+    "pivot": [
+      -50,
+      228.71,
+      106.36
+    ],
+    "axis": [
+      0.0,
+      -0.6155664078083067,
+      0.7880850192574258
+    ],
+    "mass": 0.3,
+    "inertia": [
+      0.001,
+      0.001,
+      0.001
+    ],
+    "spring_point": [
+      -55.5,
+      145.23,
+      68.94
+    ]
+  },
+  "spring": {
+    "chassis": [
+      -222,
+      141,
+      65.52
+    ],
+    "k": 52.5,
+    "c": 1.0,
+    "free_length_offset": 0.0
+  },
+  "stops": {
+    "bump_travel": 30.0,
+    "droop_travel": -30.0,
+    "k": 300.0,
+    "k2": 3000.0,
+    "c": 2.0
+  },
+  "adjusters": {
+    "camber_shim": {
+      "kind": "upright_point",
+      "points": [
+        "upper_front_outer",
+        "upper_rear_outer"
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "note": "shim at the upper ball joint: + spaces it outboard (more negative camber)"
+    },
+    "caster_shim": {
+      "kind": "joint_in_car",
+      "points": [
+        "upper_front_outer",
+        "upper_rear_outer"
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "note": "+ moves the upper ball joint forward in the car (less caster)"
+    },
+    "toe_link": {
+      "kind": "link_length",
+      "link": "tie_rod",
+      "sign": 1.0,
+      "note": "+ lengthens the tie rod"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 1530.0,
+    "cg_height": 300.0,
+    "front_brake_fraction": 0.6,
+    "half_track": 525.0,
+    "corner_mass": 51.0
+  },
+  "tire": {
+    "k": 110.0,
+    "c": 0.05
+  },
+  "bushings": {
+    "k": 20000.0,
+    "k_rot": 50.0
+  }
+}

@@ -80,6 +80,7 @@ def main():
             'solvcon.multibody.models',
             'solvcon.multibody.models.haug',
             'solvcon.multibody.models.validation',
+            'solvcon.multibody.suspension',
             'solvcon.multibody.tmm',
             'solvcon.multibody.tools',
             'solvcon.onedim',
@@ -98,6 +99,9 @@ def main():
             'solvcon.track',
             'solvcon.track.mcap',
         ],
+        package_data={
+            'solvcon.multibody.suspension': ['data/*.json'],
+        },
         install_requires=['jsonschema>=4'],
         ext_modules=[CMakeExtension("_solvcon")],
         cmdclass={'build_ext': cmake_build_ext},

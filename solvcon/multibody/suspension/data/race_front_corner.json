@@ -1,0 +1,226 @@
+{
+  "name": "Race car front corner, double wishbone, pushrod (synthetic geometry)",
+  "source": "Synthetic geometry designed for this project (not a real car). Proportions follow common open-wheel and prototype practice: short-long arms, pushrod to a chassis rocker, front-mounted tie rod. Values in mm, kg, N/mm, N.s/mm.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 330.0,
+    "center": [
+      0.0,
+      800.0,
+      330.0
+    ],
+    "spin_axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "upright": {
+    "mass": 12.0,
+    "inertia": [
+      0.25,
+      0.35,
+      0.25
+    ]
+  },
+  "links": {
+    "lower_front": {
+      "chassis": [
+        200.0,
+        250.0,
+        120.0
+      ],
+      "upright": [
+        0.0,
+        740.0,
+        150.0
+      ]
+    },
+    "lower_rear": {
+      "chassis": [
+        -200.0,
+        250.0,
+        130.0
+      ],
+      "upright": [
+        0.0,
+        740.0,
+        150.0
+      ]
+    },
+    "upper_front": {
+      "chassis": [
+        180.0,
+        320.0,
+        420.0
+      ],
+      "upright": [
+        -10.0,
+        700.0,
+        480.0
+      ]
+    },
+    "upper_rear": {
+      "chassis": [
+        -220.0,
+        320.0,
+        410.0
+      ],
+      "upright": [
+        -10.0,
+        700.0,
+        480.0
+      ]
+    },
+    "tie_rod": {
+      "rack": [
+        90.0,
+        282.5,
+        219.0
+      ],
+      "upright": [
+        90.0,
+        745.0,
+        260.0
+      ],
+      "note": "inner point placed for minimum bump steer (Nelder-Mead over y, z; residual 2e-4 deg over +/-40 mm)"
+    }
+  },
+  "rack": {
+    "mass": 1.0,
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "pushrod": {
+    "upright": [
+      0.0,
+      715.0,
+      185.0
+    ],
+    "rocker": [
+      0.0,
+      330.0,
+      590.0
+    ]
+  },
+  "rocker": {
+    "pivot": [
+      0.0,
+      260.0,
+      540.0
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "mass": 0.6,
+    "inertia": [
+      0.002,
+      0.002,
+      0.002
+    ],
+    "spring_point": [
+      0.0,
+      220.0,
+      620.0
+    ]
+  },
+  "spring": {
+    "chassis": [
+      0.0,
+      20.0,
+      600.0
+    ],
+    "k": 150.0,
+    "c": 4.0,
+    "free_length_offset": 0.0
+  },
+  "stops": {
+    "bump_travel": 35.0,
+    "droop_travel": -50.0,
+    "k": 200.0,
+    "k2": 1500.0,
+    "c": 2.0,
+    "note": "bump stop and droop stop on the spring line, touching at these wheel travels (mm); progressive force k d + k2 d^2 + c dd/dt on the spring-line penetration d, rates N/mm and N/mm^2, damping N.s/mm. A stiff progressive rubber (about 15 mm of compression for an 80 mm stone at 30 km/h). Without them the pushrod rocker goes over center near +90 mm and the linkage locks."
+  },
+  "adjusters": {
+    "camber_shim": {
+      "point": "upper_front+upper_rear",
+      "direction_upright": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "note": "shim at the upper ball joint, + spaces the joint outboard on the upright: the wheel top tilts inboard (more negative camber)"
+    },
+    "caster_shim": {
+      "point": "upper_front+upper_rear",
+      "direction_upright": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "note": "+ moves the upper ball joint forward in the car (eccentric or shims on the upper wishbone; the arms reach the moved joint): the steering axis tilts forward, less caster"
+    },
+    "toe_link": {
+      "link": "tie_rod",
+      "note": "+ lengthens the tie rod"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 3000.0,
+    "cg_height": 300.0,
+    "front_brake_fraction": 0.6,
+    "half_track": 800.0
+  },
+  "arb": {
+    "bar_pivot": [
+      80.0,
+      320.0,
+      440.0
+    ],
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "arm_tip": [
+      0.0,
+      320.0,
+      440.0
+    ],
+    "rocker_point": [
+      0.0,
+      320.0,
+      540.0
+    ],
+    "k": 3000.0,
+    "mass": 0.8,
+    "inertia": [
+      0.002,
+      0.002,
+      0.002
+    ],
+    "note": "bar torsion rate in N.m/rad; vertical drop link from a horizontal rocker arm to a horizontal bar arm"
+  },
+  "tire": {
+    "k": 300.0,
+    "c": 0.1,
+    "note": "vertical tire rate N/mm, damping N.s/mm"
+  },
+  "bushings": {
+    "k": 20000.0,
+    "k_rot": 50.0,
+    "note": "inboard link bushings for compliance: N/mm and N.m/rad"
+  }
+}
