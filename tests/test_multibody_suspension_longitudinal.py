@@ -74,6 +74,7 @@ def test_load_transfer_is_statics(vm, states, case):
                                                  rel=1e-9)
     # Braking dives the nose, driving lifts it.
     assert (st["pitch"][1] > 0.0) == (a < 0.0)
+    assert len(st["poses"]) == len(st["a_x"])
 
 
 @pytest.mark.parametrize("case", sorted(CASES))

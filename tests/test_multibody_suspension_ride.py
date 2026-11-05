@@ -209,6 +209,8 @@ def test_corner_engine_equals_linear_model_on_the_same_record():
                         ride.point_road_input(prof, speed, 12.0),
                         settle=2.0)
     assert run["airborne"] == 0.0
+    assert len(run["poses"]) == len(run["pose_times"])
+    assert {"chassis", "upright", "road"} <= set(run["poses"][0])
     lin = ride.LinearCorner(multibody, model, mass)
     # The linear model driven by the recorded road (frequency domain).
     t, y = run["time"], run["road"]
@@ -261,3 +263,7 @@ def test_linear_corner_modes_equal_the_engine_modes(stem):
                                rtol=1e-3)
     np.testing.assert_allclose(-lam.real / np.abs(lam), zeta[order],
                                rtol=1e-3)
+    modes = lin.modes()
+    np.testing.assert_allclose([m[0] for m in modes], freq[order],
+                               rtol=1e-3)
+    assert all(abs(abs(m[2]).max() - 1.0) < 1e-12 for m in modes)

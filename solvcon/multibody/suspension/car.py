@@ -62,6 +62,7 @@ __all__ = [  # noqa: F822
     'step_steer',
     'steady_state',
     'understeer_gradient',
+    'vehicle_pose',
 ]
 
 DATA_DIR = Path(__file__).parent / "data" / "vehicles"
@@ -270,6 +271,7 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
                                          f"{axle_name}_{side}"], num + k,
                                      origin=cg, velocity=vel)
                   for k, side in enumerate(("left", "right"))]
+        out.setdefault("arb_nums", {})[axle_name] = (num, num + 1)
         num += 2
         ax = list(left.arb["axis"])
         s.Add(mbs.create_rsda(halves[0], halves[1], ax, ax,
@@ -288,6 +290,60 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
         s.Add(out["chassis_support"])
     s.init()
     return s, out
+
+
+def _quat_mul(a, b):
+    w1, x1, y1, z1 = a
+    w2, x2, y2, z2 = b
+    return np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+                     w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                     w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                     w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+
+
+def vehicle_pose(s, h, follow=False):
+    """The pose of every body of the vehicle for a 3D view.
+
+    :param follow: put the chassis back over the origin, heading +x (a
+        camera that follows the car: the roll, pitch, heave, and the wheel
+        angles stay, the path does not)
+    :return: dict with ``chassis`` (position m, quaternion), ``cg`` (the
+        design position of the chassis frame origin, m), ``corners``
+        (``{corner: {body: (position, quaternion)}}``), and ``arbs``
+        (``{axle: [left half, right half]}``)
+    """
+    from .metrics import rot
+    pos = np.asarray(s.get_body_positions(), dtype="float64")
+    quat = np.asarray(s.get_body_quaternions(), dtype="float64")
+
+    def place(num):
+        return pos[num].copy(), quat[num].copy()
+
+    turn = np.array([1.0, 0.0, 0.0, 0.0])
+    now = design = np.zeros(3)
+    if follow:
+        # Turn about z through the chassis origin and put it back over its
+        # design position.
+        heading = rot(quat[1]) @ np.array([1.0, 0.0, 0.0])
+        yaw = math.atan2(heading[1], heading[0])
+        turn = np.array([math.cos(-0.5 * yaw), 0.0, 0.0,
+                         math.sin(-0.5 * yaw)])
+        now = np.array([pos[1][0], pos[1][1], 0.0])
+        design = np.array([h["cg"][0], h["cg"][1], 0.0])
+    r_turn = rot(turn)
+
+    def take(num):
+        p, q = place(num)
+        return r_turn @ (p - now) + design, _quat_mul(turn, q)
+
+    out = {"chassis": take(1), "cg": np.array(h["cg"], dtype="float64"),
+           "corners": {}, "arbs": {}}
+    for name, c in h["corners"].items():
+        out["corners"][name] = {body: take(num)
+                                for body, num in c.nums.items()}
+    for axle_name, nums in h.get("arb_nums", {}).items():
+        out["arbs"][axle_name] = [take(nums[0]), take(nums[1])]
+    return out
 
 
 def wheel_angle(spin):
@@ -328,7 +384,9 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
         ``lltd`` (front share of the load transfer), ``roll_steer`` (front,
         rear axle steer per g, rad/g, + into the turn); with ``partial``
         the turns up to the first one the rig cannot balance, and
-        ``failed_at`` (g) that one (None when all are solved)
+        ``failed_at`` (g) that one (None when all are solved); ``poses``,
+        the :func:`vehicle_pose` of each turn, and ``models``, the corner
+        models
     """
     from .metrics import rot
     models = corner_models(mbs, vm, gravity)
@@ -362,6 +420,7 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
     guess = weights
     rows = {"roll": [], "loads": [], "steer": [], "side_force": [],
             "support": [], "wheel_angle": []}
+    poses = []
 
     def settle(a):
         """The fixed point at a; returns the loads and the side forces."""
@@ -421,9 +480,12 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
                                    side["rear_left"] + side["rear_right"]])
         sup = mbs.get_force_element_loads(h["chassis_support"])
         rows["support"].append(float(np.max(np.abs(sup["force_j"]))))
+        poses.append(vehicle_pose(s, h))
     out = {key: np.array(val) for key, val in rows.items()}
     out["a_y"] = np.asarray(solved, dtype="float64")
     out["failed_at"] = failed_at
+    out["poses"] = poses
+    out["models"] = models
     loads = out["loads"]
     out["load_transfer"] = np.column_stack(
         [0.5 * (loads[:, 1] - loads[:, 0]), 0.5 * (loads[:, 3] - loads[:, 2])])
@@ -503,7 +565,7 @@ def understeer_gradient(vm, roll_steer=(0.0, 0.0), gravity=9.81):
 
 
 def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
-               dt=1e-3, gravity=9.81):
+               dt=1e-3, gravity=9.81, pose_dt=0.02):
     """A ramp-step steer at constant speed (ISO 7401 style): the vehicle
     drives straight, the rack moves by ``rack`` (m) over ``ramp`` seconds
     from ``start``, and the run lasts ``duration`` seconds.  The tires
@@ -512,7 +574,9 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
     :return: dict with ``time``, ``yaw_rate`` (rad/s), ``speed`` (m/s),
         ``lateral_acceleration`` (m/s^2, V r), ``steer`` (rad, the mean
         front and rear wheel angle to the chassis, + to the left), and the
-        means over the last 0.5 s: ``steady`` dict of the same keys
+        means over the last 0.5 s: ``steady`` dict of the same keys;
+        ``poses`` (:func:`vehicle_pose`, following the car) every
+        ``pose_dt`` seconds at ``pose_times``, and the corner ``models``
     """
     times = [0.0, start, start + ramp, duration + 1.0]
     values = [0.0, 0.0, float(rack), float(rack)]
@@ -524,8 +588,13 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
     s.set_tolerances(1e-7, 1e-10)
     from .metrics import rot
     rec = {"time": [], "yaw_rate": [], "speed": [], "steer": []}
-    for _ in range(int(round(duration / dt))):
+    poses, pose_times = [], []
+    every = max(1, int(round(pose_dt / dt)))
+    for step in range(int(round(duration / dt))):
         s.solve()
+        if 0 == step % every:
+            poses.append(vehicle_pose(s, h, follow=True))
+            pose_times.append(s.get_sim_time())
         quat = np.asarray(s.get_body_quaternions())
         vel = np.asarray(s.get_body_velocities())
         omega = np.asarray(s.get_body_angular_velocities())
@@ -545,6 +614,9 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
                              0.5 * (angles[2] + angles[3])])
     out = {key: np.array(val) for key, val in rec.items()}
     out["lateral_acceleration"] = out["speed"] * out["yaw_rate"]
+    out["poses"] = poses
+    out["pose_times"] = np.array(pose_times)
+    out["models"] = h["models"]
     tail = out["time"] >= out["time"][-1] - 0.5
     out["steady"] = {key: np.mean(out[key][tail], axis=0) for key in
                      ("yaw_rate", "speed", "lateral_acceleration", "steer")}

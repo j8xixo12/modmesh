@@ -90,7 +90,8 @@ def steady_state(mbs, vm, accelerations_g, brake_bias=0.6, drive_split=0.0,
         :data:`car.CORNERS`), ``travel`` (m, + bump, each corner from its
         static travel), ``force`` (N, the tire force of each corner),
         ``inboard`` (bool, the force acted at the wheel center), ``mass``
-        (kg), and ``cg_height`` (m) of all the bodies
+        (kg), and ``cg_height`` (m) of all the bodies; ``poses``
+        (:func:`car.vehicle_pose` of each state) and the corner ``models``
     """
     models = car.corner_models(mbs, vm, gravity)
     s, h = car.build(mbs, vm, 0.0, gravity,
@@ -105,6 +106,7 @@ def steady_state(mbs, vm, accelerations_g, brake_bias=0.6, drive_split=0.0,
         / total_mass
     rows = {"pitch": [], "loads": [], "travel": [], "force": [],
             "inboard": []}
+    poses = []
 
     def corner_travel():
         pos = np.asarray(s.get_body_positions())
@@ -172,6 +174,7 @@ def steady_state(mbs, vm, accelerations_g, brake_bias=0.6, drive_split=0.0,
         rows["travel"].append(corner_travel())
         rows["force"].append([force[name] for name in car.CORNERS])
         rows["inboard"].append(inboard)
+        poses.append(car.vehicle_pose(s, h))
     out = {key: np.array(val) for key, val in rows.items()}
     out["a_x"] = np.asarray(accelerations_g, dtype="float64")
     # The travel from the static state (the first acceleration must be 0
@@ -180,6 +183,8 @@ def steady_state(mbs, vm, accelerations_g, brake_bias=0.6, drive_split=0.0,
     out["pitch"] = out["pitch"] - out["pitch"][0]
     out["mass"] = total_mass
     out["cg_height"] = cg_height
+    out["poses"] = poses
+    out["models"] = models
     return out
 
 

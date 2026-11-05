@@ -160,3 +160,20 @@ def test_step_steer_yaw_gain(road_car, step_runs, speed):
     # An understeering car: below the neutral steer gain V / L.
     assert abs(st["yaw_rate"]) < abs(v / road_car.wheelbase * delta)
     assert kus > 0.0
+
+
+def test_vehicle_poses_for_the_view(road_car, step_runs):
+    _, runs = step_runs
+    run = runs[20.0][1]
+    assert len(run["poses"]) == pytest.approx(4.0 / 0.02, abs=1)
+    # Following the car: the chassis stays over its design position and
+    # heads +x while the car turns on the road.
+    last = run["poses"][-1]
+    pos, quat = last["chassis"]
+    np.testing.assert_allclose(pos[:2], last["cg"][:2], atol=1e-9)
+    from solvcon.multibody.suspension.metrics import rot
+    heading = rot(quat) @ np.array([1.0, 0.0, 0.0])
+    assert abs(heading[1]) < 1e-9
+    assert set(last["corners"]) == set(car.CORNERS)
+    ss = car.steady_state(multibody, road_car, (0.0, 0.1))
+    assert 2 == len(ss["poses"])

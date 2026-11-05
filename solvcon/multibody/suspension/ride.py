@@ -308,8 +308,23 @@ def point_road_input(profile, speed, duration, sample_dt=5e-4):
                               profile, None, speed)
 
 
+def _quarter_pose(s, names, road_input, t):
+    """The quarter car pose of a 3D view: ``{body: (position m,
+    quaternion)}`` and the effective ``road`` plane under the wheel."""
+    pos = np.asarray(s.get_body_positions(), dtype='float64')
+    quat = np.asarray(s.get_body_quaternions(), dtype='float64')
+    out = {body: (pos[num].copy(), quat[num].copy())
+           for body, num in names.items()}
+    height, slope, _ = road_input.at(t)
+    wheel = pos[names['upright']]
+    half = -0.5 * slope
+    out['road'] = (np.array([wheel[0], wheel[1], height]),
+                   np.array([math.cos(half), 0.0, math.sin(half), 0.0]))
+    return out
+
+
 def simulate(mbs, model, sprung_mass, road_input, dt=1e-3, settle=1.0,
-             gravity=9.81):
+             gravity=9.81, pose_dt=0.01):
     """March the quarter car of a corner model over a road input and
     measure its ride.
 
@@ -318,7 +333,9 @@ def simulate(mbs, model, sprung_mass, road_input, dt=1e-3, settle=1.0,
         ``tire_force`` (N), ``travel`` (m, + bump), ``road`` (m), and the
         statistics after ``settle``: ``body_acc_rms``, ``body_acc_w``
         (Wk), ``tire_force_std``, ``tire_load_ratio``, ``travel_std``,
-        ``airborne`` (s), and ``comfort``
+        ``airborne`` (s), and ``comfort``; ``poses`` (``{body: (position,
+        quaternion)}`` with the ``road`` plane) every ``pose_dt`` seconds
+        at ``pose_times``
     """
     s, h = vehicle.quarter_car(mbs, model, sprung_mass, road=road_input,
                                dt=dt, gravity=gravity)
@@ -330,9 +347,15 @@ def simulate(mbs, model, sprung_mass, road_input, dt=1e-3, settle=1.0,
     steps = int(math.floor(road_input.duration / dt)) - 1
     rec = {'time': [], 'body_acc': [], 'tire_force': [], 'travel': [],
            'road': []}
-    for _ in range(steps):
+    names = dict(nums, chassis=chassis)
+    poses, pose_times = [], []
+    every = max(1, int(round(pose_dt / dt)))
+    for step in range(steps):
         s.solve()
         t = s.get_sim_time()
+        if 0 == step % every:
+            poses.append(_quarter_pose(s, names, road_input, t))
+            pose_times.append(t)
         pos = np.asarray(s.get_body_positions())
         acc = np.asarray(s.get_body_accelerations())
         rec['time'].append(t)
@@ -354,6 +377,8 @@ def simulate(mbs, model, sprung_mass, road_input, dt=1e-3, settle=1.0,
         'airborne': float(dt * np.count_nonzero(force <= 0.0)),
         'comfort': comfort_reaction(a_w),
         'static_load': float(h['weight'])})
+    out['poses'] = poses
+    out['pose_times'] = np.array(pose_times)
     return out
 
 
@@ -395,5 +420,24 @@ class LinearCorner(_LinearRide):
                          ct, weight)
         self.wheel_damping = c_w
         self.patch_rate = a
+
+    def modes(self):
+        """The damped modes: ``[(frequency Hz, damping ratio, shape)]`` in
+        ascending frequency, ``shape`` the complex amplitudes of (chassis
+        z, travel) scaled to a largest magnitude of 1."""
+        n = self.M.shape[0]
+        first = np.block([[np.zeros((n, n)), np.eye(n)],
+                          [-np.linalg.solve(self.M, self.K),
+                           -np.linalg.solve(self.M, self.C)]])
+        lam, vec = np.linalg.eig(first)
+        out = []
+        for k in np.argsort(np.abs(lam)):
+            if lam[k].imag <= 0.0:
+                continue
+            shape = vec[:n, k]
+            shape = shape / shape[np.argmax(np.abs(shape))]
+            out.append((float(abs(lam[k]) / (2.0 * math.pi)),
+                        float(-lam[k].real / abs(lam[k])), shape))
+        return out
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
