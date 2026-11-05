@@ -37,8 +37,9 @@ def bump_sweep(mbs, model, travels, steer=0.0):
         x = contact patch x; "svic", the side-view instant center in the
         plane y = contact patch y; "roll_center_point", the contact patch to
         FVIC line at y = 0; "kingpin_point", the steering axis ground point;
-        "kingpin_dir", its upward unit direction. An instant center at
-        infinity is a NaN row.
+        "kingpin_dir", its upward unit direction; "patch_rate" and
+        "center_rate", the velocity per unit travel of the contact patch and
+        of the wheel center. An instant center at infinity is a NaN row.
     :rtype: dict
     """
     s, c = corner_mod.kc_rig(mbs, model, travel=float(travels[0]), steer=steer)
@@ -50,7 +51,8 @@ def bump_sweep(mbs, model, travels, steer=0.0):
                                     "roll_center", "anti_dive", "wheel_rate",
                                     "spring_length", "rcond")}
     for key in ("contact_patch", "fvic", "svic", "roll_center_point",
-                "kingpin_point", "kingpin_dir"):
+                "kingpin_point", "kingpin_dir", "patch_rate",
+                "center_rate"):
         out[key] = np.zeros((n, 3))
     col = _driver_col(res, s, c.travel)
     veh = model.vehicle
@@ -75,6 +77,11 @@ def bump_sweep(mbs, model, travels, steer=0.0):
         cp = wg["contact_patch"]
         _, v_cp = mt.point_rate(r_up, a_up, a_up.T @ (cp - r_up),
                                 res["dr_ds"][k, up], res["domega_ds"][k, up])
+        # The rates per unit travel of the contact patch (an upright-fixed
+        # point) and of the wheel center: the lever arms of a tire force
+        # in the virtual work (outboard brakes and inboard drive).
+        out["patch_rate"][k] = v_cp
+        out["center_rate"][k] = res["dr_ds"][k, up]
         r_rk = res["positions"][k, rk]
         a_rk = mt.rot(res["quaternions"][k, rk])
         p_sp, v_sp = mt.point_rate(r_rk, a_rk, c.spring_points[0],
