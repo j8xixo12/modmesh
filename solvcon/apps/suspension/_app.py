@@ -210,7 +210,8 @@ class SuspensionApp(base.PilotFeature):
                     'vehicle_reference': self.on_vehicle_reference,
                     'longitudinal': self.on_longitudinal,
                     'frame': self.on_frame, 'animate': self.on_animate,
-                    'mode_shape': self.on_mode_shape}
+                    'mode_shape': self.on_mode_shape,
+                    'vehicle_setup_changed': self.on_vehicle_setup_changed}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
@@ -399,6 +400,7 @@ class SuspensionApp(base.PilotFeature):
 
     def on_adjuster(self, name, value):
         self.session.set_adjuster(name, value)
+        self._drop_results(self.MODEL_CHANGED)
         self.refresh()
 
     def on_kind(self, name):
@@ -462,6 +464,7 @@ class SuspensionApp(base.PilotFeature):
                  sess.previous, adjusters) = before
                 sess.adjusters.update(adjusters)
                 panel.edit_status.setText("the change is cancelled")
+                self._drop_results(self.MODEL_CHANGED)
                 self._geometry = None
                 self._rebuild_view()
                 self.refresh()
@@ -473,8 +476,9 @@ class SuspensionApp(base.PilotFeature):
             else:
                 panel.edit_status.setText(
                     "kept in this session; Save model... writes it")
-        # The geometry may have moved: rebuild the meshes; the setup sheet
-        # starts from the changed model.
+        # The geometry may have moved: rebuild the meshes; the results of
+        # the old model go; the setup sheet starts from the changed model.
+        self._drop_results(self.MODEL_CHANGED)
         self._geometry = None
         self._rebuild_view()
         self.refresh()
@@ -549,9 +553,13 @@ class SuspensionApp(base.PilotFeature):
     #: The quarter car sprung mass (kg) of a model without a corner mass.
     DEFAULT_SPRUNG_MASS = 200.0
 
-    def _drop_results(self):
-        """Stop and drop the quarter car run, and clear the tabs that show
-        results of the model."""
+    #: The note of a tab whose results the last change dropped.
+    MODEL_CHANGED = "the model changed: run the analysis again"
+
+    def _drop_results(self, note=""):
+        """Stop and drop the quarter car run, and clear every tab that shows
+        results of the corner model (each was computed for the model before
+        the change); ``note`` tells the user why."""
         self.timer.stop()
         if self.run is not None and not self.run.finished:
             self.run.cancel()
@@ -564,9 +572,14 @@ class SuspensionApp(base.PilotFeature):
             self.analysis.statics.clear()
             self.analysis.ride.clear()
             self.analysis.setup.clear()
-            for key in ('ride', 'modal'):
+            self.analysis.batch.clear(note)
+            self.analysis.profile.clear(note)
+            for key in ('ride', 'modal', 'statics'):
                 if key in self.animations:
                     self.set_animation(key, [])
+            for tab in (self.analysis.dynamics, self.analysis.modal,
+                        self.analysis.statics, self.analysis.ride):
+                tab.status.setText(note)
 
     def on_export(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -668,6 +681,7 @@ class SuspensionApp(base.PilotFeature):
             tab.status.setText(f"not applied: {exc}")
             tab.show_fields(self.session.setup_fields())
             return
+        self._drop_results(self.MODEL_CHANGED)
         self.refresh()
         self.on_setup_action('readouts', mass)
 
@@ -679,6 +693,7 @@ class SuspensionApp(base.PilotFeature):
             tab.show_fields(sess.setup_fields())
         elif 'reset' == action:
             sess.reset_setup()
+            self._drop_results(self.MODEL_CHANGED)
             tab.show_fields(sess.setup_fields())
             self.refresh()
         elif 'save' == action:
@@ -699,6 +714,7 @@ class SuspensionApp(base.PilotFeature):
             except (OSError, ValueError) as exc:
                 tab.status.setText(f"not loaded: {exc}")
                 return
+            self._drop_results(self.MODEL_CHANGED)
             tab.show_fields(sess.setup_fields())
             self.refresh()
         out = self._busy(tab.status, "computing the setup numbers...",
@@ -719,8 +735,17 @@ class SuspensionApp(base.PilotFeature):
             return
         tab = self.analysis.vehicle
         tab.show_vehicle_setup(self.session.vehicle_setup(stem))
-        tab.reference_handling = None
-        tab.handling_plot.set_curves([])
+        # Nothing of the last vehicle stays: its results, its reference, and
+        # its 3D frames.
+        tab.clear_results(keep_reference=False)
+        self.set_animation('vehicle', [])
+
+    def on_vehicle_setup_changed(self):
+        """A vehicle setup field changed: the shown results are of the old
+        setup, so they go (the reference stays: it is a chosen setup)."""
+        tab = self.analysis.vehicle
+        tab.clear_results("the setup changed: run the analysis again")
+        self.set_animation('vehicle', [])
 
     def on_handling(self, stem, setups):
         tab = self.analysis.vehicle
@@ -1218,6 +1243,8 @@ class SuspensionApp(base.PilotFeature):
                                        out['adjusters'].items()))
         else:
             panel.target_status.setText(f"not solved: {out['message']}")
+        if out['converged']:
+            self._drop_results(self.MODEL_CHANGED)
         self.refresh()
 
     def on_compliance_sweep(self, case, fmax, count):
@@ -1276,6 +1303,7 @@ class SuspensionApp(base.PilotFeature):
                        f"moving {name}...",
                        lambda: sess.set_hardpoint(name, value))
             self._geometry = None
+            self._drop_results(self.MODEL_CHANGED)
             self.refresh()
             self.view.select_point(name)
 

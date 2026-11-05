@@ -878,6 +878,7 @@ class VehicleTab(QWidget):
 
     def __init__(self, handlers, parent=None):
         super().__init__(parent)
+        self._handlers = handlers
         layout = QVBoxLayout(self)
         row = QHBoxLayout()
         self.vehicle = QComboBox()
@@ -994,8 +995,30 @@ class VehicleTab(QWidget):
                 else:
                     spin = _spin(lo, hi, value, unit, decimals=decimals,
                                  step=step)
+                # A changed setup makes the shown results stale.
+                spin.valueChanged.connect(
+                    lambda _: self._handlers['vehicle_setup_changed']())
                 self.setup_grid.addWidget(spin, it, col)
                 self.setup_spins[(axle_name, key)] = spin
+
+    def clear_results(self, note="", keep_reference=True):
+        """Drop every result shown: the status, the plots, the handling
+        curve (and the reference unless ``keep_reference``)."""
+        if not keep_reference:
+            self.reference_handling = None
+        self.last_handling = None
+        ref = self.reference_handling
+        if ref is not None:
+            deg = 180.0 / 3.141592653589793
+            self.handling_plot.set_curves([
+                ("reference", list(ref['a_y']),
+                 list(ref['understeer_angle'] * deg),
+                 _plots.PREVIOUS_COLOR, True)])
+        else:
+            self.handling_plot.set_curves([])
+        for plot in (self.brake_plot, self.roll_plot, self.yaw_plot):
+            plot.set_curves([])
+        self.status.setText(note)
 
     def setups(self):
         """The vehicle setup the controls show."""
@@ -1304,6 +1327,12 @@ class BatchTab(QWidget):
             self.plots[key] = plot
         layout.addLayout(grid, 1)
 
+    def clear(self, note=""):
+        """Drop the results of another model."""
+        for plot in self.plots.values():
+            plot.set_curves([])
+        self.status.setText(note)
+
     def show_points(self, names):
         current = self.point.currentText()
         self.point.blockSignals(True)
@@ -1368,6 +1397,17 @@ class ProfileTab(QWidget):
         layout.addLayout(right, 3)
         for heave in (-30.0, -15.0, 0.0, 15.0, 30.0):
             self.add_row((heave, 0.0, 0.0))
+
+    def clear(self, note=""):
+        """Drop the results of another model (the rows stay)."""
+        for plot in self.plots.values():
+            plot.set_curves([])
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, 0)
+        self.slider.setEnabled(False)
+        self.slider.blockSignals(False)
+        self.cursor_label.setText("")
+        self.status.setText(note)
 
     def add_row(self, values=(0.0, 0.0, 0.0)):
         row = self.table.rowCount()

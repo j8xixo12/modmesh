@@ -862,6 +862,119 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         statics.replay.slider.setValue(0)
         self.assertIn("deflection", statics.replay.label.text())
 
+    def _fill_corner_results(self, feature):
+        """Run every corner analysis so each result widget holds data."""
+        a = feature.analysis
+        a.dynamics.set_road('rig', amplitude=5.0, frequency=3.0,
+                            duration=0.1)
+        a.dynamics.run.click()
+        self._march(feature)
+        a.modal.run.click()
+        a.modal.animate.click()
+        a.modal.replay.play.setChecked(False)
+        a.statics.run.click()
+        a.ride.run.click()
+        a.ride.run_time.click()
+        a.batch.run.click()
+        a.profile.run.click()
+        self.assertIsNotNone(feature.run)
+        self.assertTrue(a.modal.rows())
+        self.assertTrue(a.ride.plot.labels())
+        for key in ('ride', 'modal', 'statics'):
+            self.assertTrue(feature.animations.get(key), key)
+
+    def _assert_corner_results_dropped(self, feature, note):
+        a = feature.analysis
+        self.assertIsNone(feature.run)
+        self.assertFalse(feature.timer.isActive())
+        self.assertFalse(feature.anim_timer.isActive())
+        self.assertEqual([], a.modal.rows())
+        self.assertEqual(0, a.statics.table.topLevelItemCount())
+        for plot in (a.dynamics.plot, a.dynamics.force_plot, a.ride.plot,
+                     a.ride.time_plot, *a.statics.ramp_plots.values(),
+                     *a.batch.plots.values(), *a.profile.plots.values()):
+            self.assertEqual([], plot.labels())
+        for key in ('ride', 'modal', 'statics'):
+            self.assertEqual([], feature.animations.get(key, []), key)
+            self.assertFalse(feature._bar(key).slider.isEnabled(), key)
+        for tab in (a.dynamics, a.modal, a.statics, a.ride):
+            self.assertEqual(note, tab.status.text())
+
+    def test_every_change_of_the_corner_drops_its_results(self):
+        import shutil
+        feature = self._open()
+        note = feature.MODEL_CHANGED
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'corner.json')
+            shutil.copy(os.path.join(feature.session.engine.data_dir,
+                                     'macpherson_coilover.json'), path)
+            feature.load_model(path)
+            feature.ask_save = lambda p: 'temporary'
+            changes = {
+                'adjuster': lambda: feature.adjusters.spins[
+                    'camber_shim'].setValue(1.0),
+                'setup': lambda: feature.analysis.setup.spins[
+                    'spring_rate'].setValue(70.0),
+                'setup reset': lambda: feature.analysis.setup
+                .reset_button.click(),
+                'tree edit': lambda: (feature.tree.select('spring'),
+                                      feature.adjusters.edit_property(
+                                          'k', '65')),
+                'hardpoint': lambda: feature.on_hardpoint(
+                    'set', 'lower_front_inner', (-17.88, 375.0, 245.7529)),
+                'model load': lambda: feature.on_library(
+                    'macpherson_coilover'),
+            }
+            for name, change in changes.items():
+                with self.subTest(change=name):
+                    self._fill_corner_results(feature)
+                    change()
+                    self._assert_corner_results_dropped(
+                        feature, "" if 'model load' == name else note)
+
+    def test_every_change_of_the_vehicle_drops_its_results(self):
+        feature = self._open()
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+
+        def fill():
+            vehicle.run.click()
+            vehicle.handling.click()
+            vehicle.longitudinal.click()
+            vehicle.step.click()
+            for plot in (vehicle.roll_plot, vehicle.handling_plot,
+                         vehicle.brake_plot, vehicle.yaw_plot):
+                self.assertTrue(plot.labels())
+            self.assertTrue(feature.animations['vehicle'])
+
+        fill()
+        vehicle.reference.click()
+        # A setup change: the results go, the chosen reference stays.
+        vehicle.setup_spins[('front', 'spring_rate')].setValue(70.0)
+        self.assertEqual(['reference'], vehicle.handling_plot.labels())
+        for plot in (vehicle.roll_plot, vehicle.brake_plot,
+                     vehicle.yaw_plot):
+            self.assertEqual([], plot.labels())
+        self.assertEqual([], feature.animations['vehicle'])
+        self.assertIn("run the analysis again", vehicle.status.text())
+        # Another vehicle: nothing of the last one stays.
+        fill()
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'road_car'))
+        self.assertIsNone(vehicle.reference_handling)
+        for plot in (vehicle.roll_plot, vehicle.handling_plot,
+                     vehicle.brake_plot, vehicle.yaw_plot):
+            self.assertEqual([], plot.labels())
+        self.assertEqual([], feature.animations['vehicle'])
+        self.assertEqual("", vehicle.status.text())
+        # The same inputs give the same numbers run after run.
+        vehicle.run.click()
+        first = vehicle.status.text()
+        vehicle.handling.click()
+        vehicle.run.click()
+        self.assertEqual(first, vehicle.status.text())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics
