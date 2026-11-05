@@ -418,9 +418,11 @@ class StaticsTab(QWidget):
         row.addStretch(1)
         ramp_layout.addLayout(row)
         self.ramp_status = QLabel("")
+        self.replay = ReplayBar('statics', handlers)
         self.ramp_status.setWordWrap(True)
         self.ramp_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         ramp_layout.addWidget(self.ramp_status)
+        ramp_layout.addWidget(self.replay)
         plots = QHBoxLayout()
         self.ramp_plots = {}
         for key, title, unit in (('toe', "Toe change", 'deg'),

@@ -12,8 +12,10 @@ reads every result from a :class:`~._session.SuspensionSession` and moves
 the 3D pose and the plot cursors together.
 """
 
+import math
 import os
 
+import numpy as np
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (QApplication, QDockWidget, QFileDialog,
                                QLabel, QMessageBox)
@@ -35,6 +37,33 @@ __all__ = [  # noqa: F822
 
 CURRENT = "current"
 PREVIOUS = "previous"
+
+
+def _rotation_vector(r):
+    """The rotation vector of a rotation matrix (axis times angle)."""
+    angle = math.acos(max(-1.0, min(1.0, 0.5 * (np.trace(r) - 1.0))))
+    if angle < 1e-12:
+        return np.zeros(3)
+    axis = np.array([r[2, 1] - r[1, 2], r[0, 2] - r[2, 0],
+                     r[1, 0] - r[0, 1]]) / (2.0 * math.sin(angle))
+    return axis * angle
+
+
+def _axis_quat(vec):
+    angle = float(np.linalg.norm(vec))
+    if angle < 1e-15:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    axis = np.asarray(vec) / angle
+    return np.array([math.cos(0.5 * angle), *(math.sin(0.5 * angle) * axis)])
+
+
+def _quat_mul(a, b):
+    w1, x1, y1, z1 = a
+    w2, x2, y2, z2 = b
+    return np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+                     w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                     w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                     w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
 
 
 class SuspensionApp(base.PilotFeature):
@@ -576,6 +605,7 @@ class SuspensionApp(base.PilotFeature):
                          lambda: self.session.run_compliance(force))
         if out['completed']:
             tab.add_row(out)
+            self.set_animation('statics', self._load_frames(out))
             tab.status.setText(f"load {list(force)} N: toe change "
                                f"{out['toe']:+.4f} deg, camber change "
                                f"{out['camber']:+.4f} deg")
@@ -742,7 +772,8 @@ class SuspensionApp(base.PilotFeature):
 
     def _bar(self, key):
         tabs = {'vehicle': self.analysis.vehicle, 'ride': self.analysis.ride,
-                'modal': self.analysis.modal}
+                'modal': self.analysis.modal,
+                'statics': self.analysis.statics}
         return tabs[key].replay
 
     def set_animation(self, key, frames, index=None):
@@ -765,8 +796,9 @@ class SuspensionApp(base.PilotFeature):
         if not frames:
             return
         index = max(0, min(int(index), len(frames) - 1))
-        label, geometries, pose, overlays = frames[index]
-        self._show_other(geometries, pose, overlays)
+        label, geometries, pose, overlays = frames[index][:4]
+        forces = frames[index][4] if len(frames[index]) > 4 else None
+        self._show_other(geometries, pose, overlays, forces)
         self._bar(key).label.setText(f"{label} ({index + 1} of "
                                      f"{len(frames)})")
 
@@ -807,6 +839,55 @@ class SuspensionApp(base.PilotFeature):
             frames.append((label, geometries, pose,
                            {'vehicle_body': body}))
         return frames
+
+    #: The displacement scale of the compliance frames in the 3D view.
+    COMPLIANCE_SCALE = 20.0
+
+    def _compliance_frames(self, out, unit):
+        """The frames of a compliance sweep: the bushing deflection of each
+        load scaled by :attr:`COMPLIANCE_SCALE` about the unloaded pose,
+        with the load as an arrow."""
+        geometry = _scene.CornerGeometry(self.session.model())
+        loads = list(out['load'])
+        base = out['poses'][loads.index(0.0)] if 0.0 in loads \
+            else out['poses'][0]
+        scale = self.COMPLIANCE_SCALE
+        point = None if out['load_point'] is None \
+            else np.asarray(out['load_point']) * 1e3
+        frames = []
+        for load, pose in zip(loads, out['poses']):
+            shown = {}
+            for body, (p, q) in pose.items():
+                p0, q0 = base[body]
+                delta = _scene.rotation(q) @ _scene.rotation(q0).T
+                vec = _rotation_vector(delta) * scale
+                shown[body] = (p0 + scale * (np.asarray(p) - p0),
+                               _quat_mul(_axis_quat(vec), q0))
+            forces = None
+            if point is not None and out['case'] in ('lateral', 'braking',
+                                                     'traction'):
+                axis = 1 if 'lateral' == out['case'] else 0
+                vector = np.zeros(3)
+                vector[axis] = load
+                if abs(load) > 0.0:
+                    forces = [(out['case'], point, vector)]
+            frames.append((f"{out['case']} {load:+.0f} {unit} (deflection "
+                           f"x{scale:g})", [geometry], shown, None, forces))
+        return frames
+
+    def _load_frames(self, out):
+        """The unloaded and the loaded compliant rig of one load case, the
+        deflection scaled, with the load as an arrow."""
+        ramp = {'load': [0.0, 1.0], 'poses': out['poses'],
+                'load_point': out['load_point'], 'case': 'load'}
+        frames = self._compliance_frames(ramp, "")
+        point = np.asarray(out['load_point']) * 1e3
+        force = np.asarray(out['force'], dtype='float64')
+        label = f"load {list(out['force'])} N (deflection " \
+                f"x{self.COMPLIANCE_SCALE:g})"
+        return [("no load",) + frames[0][1:4] + (None,),
+                (label,) + frames[1][1:4]
+                + ([('load', point, force)],)]
 
     def _quarter_frames(self, model, poses, labels):
         geometry = _scene.CornerGeometry(model)
@@ -967,7 +1048,7 @@ class SuspensionApp(base.PilotFeature):
         self._show_other([self._run_geometry], pose,
                          {'road_profile': self.run.road_profile(pose, time)})
 
-    def _show_other(self, geometries, pose, overlays=None):
+    def _show_other(self, geometries, pose, overlays=None, forces=None):
         """Pose the view with something else than the sweep (the quarter
         car, the profile); the next sweep cursor move rebuilds the sweep
         corners."""
@@ -983,7 +1064,7 @@ class SuspensionApp(base.PilotFeature):
             self.view.build(geometries, aim=count != len(shown))
             self._showing_run = shown
         self.view.show_pose(geometries, pose, selected=self.selected,
-                            overlays=overlays)
+                            overlays=overlays, forces=forces)
 
     def on_road_csv(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -1153,6 +1234,9 @@ class SuspensionApp(base.PilotFeature):
             tab.show_ramp(out, unit)
             for plot in tab.ramp_plots.values():
                 plot.set_xlabel(f"Load [{unit}]")
+            if out.get('poses'):
+                self.set_animation('statics', self._compliance_frames(
+                    out, unit), index=len(out['poses']) - 1)
         else:
             tab.ramp_status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)

@@ -1124,6 +1124,7 @@ class SuspensionSession(object):
                 sys_obj, _ = eng.compliance.compliant_rig(eng.mbs, model)
                 base = eng.compliance.apply_patch_load(eng.mbs, sys_obj,
                                                        model, [0.0] * 3)
+                base['pose'] = self._rig_pose(sys_obj, model)
                 self._compliance = (model, sys_obj, base, None)
             model, sys_obj, base, last = self._compliance
             loaded = eng.compliance.apply_patch_load(
@@ -1138,6 +1139,8 @@ class SuspensionSession(object):
             self._compliance = None
             return out
         out = {'completed': True, 'message': '', 'force': list(force),
+               'poses': [base['pose'], self._rig_pose(sys_obj, model)],
+               'load_point': base['contact_patch'],
                'toe': (loaded['toe'] - base['toe']) * DEG,
                'camber': (loaded['camber'] - base['camber']) * DEG,
                'patch': (loaded['contact_patch']
@@ -1147,6 +1150,15 @@ class SuspensionSession(object):
             'info', 'statics', None,
             f"compliance load case {list(force)} N converged"))
         return out
+
+    def _rig_pose(self, sys_obj, model):
+        """The corner bodies of the compliant rig: ``{body: (position,
+        quaternion)}``."""
+        nums = self.engine.corner.body_numbers(model, 1)
+        pos = np.asarray(sys_obj.get_body_positions(), dtype='float64')
+        quat = np.asarray(sys_obj.get_body_quaternions(), dtype='float64')
+        return {name: (pos[num].copy(), quat[num].copy())
+                for name, num in nums.items()}
 
     def run_modal(self, sprung_mass):
         """Return the modes of the quarter car at its static equilibrium.
@@ -1296,6 +1308,7 @@ class SuspensionSession(object):
         result = {
             'completed': bool(out['completed']), 'message': out['message'],
             'case': case, 'load': np.asarray(out['load']),
+            'poses': out['poses'], 'load_point': out['load_point'],
             'toe': np.asarray(out['toe']) * DEG,
             'camber': np.asarray(out['camber']) * DEG,
             'patch': np.asarray(out['patch']) * MM,

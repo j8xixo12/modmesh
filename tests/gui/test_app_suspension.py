@@ -846,6 +846,22 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         feature.update_cursor(0)
         self.assertIn('upright', feature.view.widget.objectNames())
 
+    def test_compliance_in_3d(self):
+        feature = self._open()
+        statics = feature.analysis.statics
+        statics.run.click()
+        frames = feature.animations['statics']
+        self.assertEqual(2, len(frames))
+        self.assertIn("deflection x20", frames[1][0])
+        self.assertTrue(frames[1][4])
+        statics.ramp_run.click()
+        frames = feature.animations['statics']
+        self.assertGreater(len(frames), 2)
+        # The scaled deflection: the upright of the largest load moves 20
+        # times its engine displacement from the unloaded pose.
+        statics.replay.slider.setValue(0)
+        self.assertIn("deflection", statics.replay.label.text())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics

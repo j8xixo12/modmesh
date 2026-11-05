@@ -256,7 +256,9 @@ def compliance_sweep(mbs, model, case, fmax, n=11, k_trans=None, k_rot=None):
         upright from zero load, global, rad), "gradient" ({toe, camber,
         patch_x, patch_y, patch_z, rot_x, rot_y, rot_z} at zero load by
         central difference of the two neighbor points, per N or per N m;
-        NaN if a neighbor is missing), "case",
+        NaN if a neighbor is missing), "case", "poses" ({body: (position,
+        quaternion)} of the corner bodies at each load, the rig chassis is
+        the ground), "load_point" (the unloaded contact patch, m),
         "completed", and "message". After a failure the arrays hold the
         solved points in ascending load order.
     :rtype: dict
@@ -276,8 +278,18 @@ def compliance_sweep(mbs, model, case, fmax, n=11, k_trans=None, k_rot=None):
     loads[mid] = 0.0
     up = 1
     points = {}
+    poses = {}
+    nums = corner_mod.body_numbers(model, 1)
     completed, message = True, ""
     cp_local = None
+
+    def pose_of(s):
+        pos = np.asarray(as_list(s.get_body_positions()), dtype="float64")
+        quat = np.asarray(as_list(s.get_body_quaternions()),
+                          dtype="float64")
+        return {name: (pos[num].copy(), quat[num].copy())
+                for name, num in nums.items()}
+
     for branch in (range(mid, -1, -1), range(mid, n)):
         try:
             s, _ = compliant_rig(mbs, model, k_trans, k_rot)
@@ -295,6 +307,7 @@ def compliance_sweep(mbs, model, case, fmax, n=11, k_trans=None, k_rot=None):
         for k in branch:
             if k == mid:
                 points[k] = (0.0, 0.0, np.zeros(3), np.zeros(3))
+                poses[k] = pose_of(s)
                 continue
             f, t = _load_of(case, loads[k], cp0, r0)
             s.set_applied_load(up, list(f), list(t))
@@ -311,6 +324,7 @@ def compliance_sweep(mbs, model, case, fmax, n=11, k_trans=None, k_rot=None):
             points[k] = (wg["toe"] - base[0], wg["camber"] - base[1],
                          r + a @ cp_local - base[2],
                          mt.rotation_vector(a @ base[3].T))
+            poses[k] = pose_of(s)
         if not completed:
             break
     ks = sorted(points)
@@ -318,7 +332,9 @@ def compliance_sweep(mbs, model, case, fmax, n=11, k_trans=None, k_rot=None):
            "toe": np.array([points[k][0] for k in ks]),
            "camber": np.array([points[k][1] for k in ks]),
            "patch": np.array([points[k][2] for k in ks]).reshape(-1, 3),
-           "rotation": np.array([points[k][3] for k in ks]).reshape(-1, 3)}
+           "rotation": np.array([points[k][3] for k in ks]).reshape(-1, 3),
+           "poses": [poses[k] for k in ks],
+           "load_point": None if cp_local is None else base[2]}
     grad = {key: float("nan") for key in ("toe", "camber", "patch_x",
                                           "patch_y", "patch_z", "rot_x",
                                           "rot_y", "rot_z")}
