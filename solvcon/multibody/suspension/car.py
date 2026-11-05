@@ -47,6 +47,7 @@ import numpy as np
 from . import axle
 from . import corner as corner_mod
 from . import kc
+from . import tuning
 from . import vehicle
 from .model import MM, CornerModel
 
@@ -56,6 +57,7 @@ __all__ = [  # noqa: F822
     'closed_form',
     'axle_loads',
     'corner_models',
+    'handling_diagram',
     'kinematic_steer',
     'step_steer',
     'steady_state',
@@ -105,8 +107,11 @@ class VehicleModel(object):
             return CornerModel.load(path if path.exists() else ref)
 
         self.wheelbase = data["wheelbase"] * MM
-        self.front = corner(data["front"])
-        self.rear = corner(data["rear"]).translated(
+        setups = data.get("setup", {})
+        self.front = tuning.apply(corner(data["front"]),
+                                  setups.get("front", {}))
+        self.rear = tuning.apply(corner(data["rear"]),
+                                 setups.get("rear", {})).translated(
             [-self.wheelbase, 0.0, 0.0])
         self.sprung_mass = float(data["sprung_mass"])
         self.front_fraction = float(data["front_fraction"])
@@ -122,6 +127,23 @@ class VehicleModel(object):
         # N/deg in the file.
         self.cornering_stiffness = [float(c) / DEG for c in stiff]
         self.mu = float(tire.get("mu", 1.0))
+        # The nonlinear tire of the handling diagram: the shape factor C of
+        # the Magic Formula side force and the load sensitivities of the
+        # cornering stiffness and the friction (per unit load change).
+        self.tire_shape = float(tire.get("shape", 1.3))
+        self.stiffness_sensitivity = float(tire.get(
+            "stiffness_load_sensitivity", 0.25))
+        self.mu_sensitivity = float(tire.get("mu_load_sensitivity", 0.12))
+
+    def with_setup(self, front=None, rear=None):
+        """A copy with the setups (see :mod:`suspension.tuning`) applied on
+        top of the current front and rear corners."""
+        vm = copy.deepcopy(self)
+        if front:
+            vm.front = tuning.apply(vm.front, front)
+        if rear:
+            vm.rear = tuning.apply(vm.rear, rear)
+        return vm
 
     @classmethod
     def load(cls, name_or_path):
@@ -241,7 +263,7 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
         out["tires"][name] = tire
     for axle_name in ("front", "rear"):
         left = models[f"{axle_name}_left"]
-        if left.arb is None or not left.has_rocker:
+        if left.arb is None:
             continue
         halves = [axle._add_arb_half(mbs, s, models[f"{axle_name}_{side}"],
                                      chassis, out["corners"][
@@ -268,6 +290,15 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
     return s, out
 
 
+def wheel_angle(spin):
+    """The heading (rad, + to the left) of a wheel plane with the global
+    spin axis ``spin``: the forward direction z x s, or its opposite."""
+    fwd = np.cross([0.0, 0.0, 1.0], np.asarray(spin, dtype="float64"))
+    if fwd[0] < 0.0:
+        fwd = -fwd
+    return float(math.atan2(fwd[1], fwd[0]))
+
+
 def _roll_angle(quat):
     from .metrics import rot
     r = rot(np.asarray(quat, dtype="float64"))
@@ -275,7 +306,7 @@ def _roll_angle(quat):
 
 
 def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
-                 gravity=9.81, rtol=1e-4):
+                 gravity=9.81, rtol=1e-4, partial=False):
     """The vehicle in steady turns (left, a_y > 0) at lateral
     accelerations given in g.
 
@@ -289,11 +320,15 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
         (rad, + to the outside of the turn), ``loads`` (N, 4 corners in
         :data:`CORNERS` order), ``load_transfer`` (front, rear: half the
         outer minus inner load, N), ``steer`` (rad, toe of each corner
-        from design, + to the left), ``side_force`` (front, rear, N),
+        from design, + to the left), ``wheel_angle`` (rad, the heading of
+        each wheel plane to the vehicle, with the static toe, + to the
+        left), ``side_force`` (front, rear, N),
         ``support`` (largest chassis support force, N), and the gradients
         ``roll_gradient`` (deg/g), ``load_transfer_gradient`` (N/g),
         ``lltd`` (front share of the load transfer), ``roll_steer`` (front,
-        rear axle steer per g, rad/g, + into the turn)
+        rear axle steer per g, rad/g, + into the turn); with ``partial``
+        the turns up to the first one the rig cannot balance, and
+        ``failed_at`` (g) that one (None when all are solved)
     """
     from .metrics import rot
     models = corner_models(mbs, vm, gravity)
@@ -326,7 +361,7 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
                 + _corner_mass(models[name])) * gravity for name in CORNERS]
     guess = weights
     rows = {"roll": [], "loads": [], "steer": [], "side_force": [],
-            "support": []}
+            "support": [], "wheel_angle": []}
 
     def settle(a):
         """The fixed point at a; returns the loads and the side forces."""
@@ -353,29 +388,42 @@ def steady_state(mbs, vm, accelerations_g=(0.0, 0.1, 0.2, 0.3),
                            f"{a:g} g")
 
     last = 0.0
+    failed_at = None
+    solved = []
     for a in accelerations_g:
         # Continuation in steps of at most MAX_STEP_G from the last turn.
         count = max(1, int(math.ceil(abs(a - last) / MAX_STEP_G)))
-        for step in range(1, count + 1):
-            loads, side = settle(last + (a - last) * step / count)
-            guess = loads
+        try:
+            for step in range(1, count + 1):
+                loads, side = settle(last + (a - last) * step / count)
+                guess = loads
+        except RuntimeError:
+            if not partial:
+                raise
+            failed_at = a
+            break
         last = a
+        solved.append(a)
         guess = loads
         quat = np.asarray(s.get_body_quaternions())
         rows["roll"].append(_roll_angle(quat[1]))
-        steer = []
+        steer, wheel = [], []
         for name in CORNERS:
             c = h["corners"][name]
-            fwd = rot(quat[c.nums["upright"]]) @ np.array([1.0, 0.0, 0.0])
+            r_up = rot(quat[c.nums["upright"]])
+            fwd = r_up @ np.array([1.0, 0.0, 0.0])
             steer.append(float(math.atan2(fwd[1], fwd[0])))
+            wheel.append(wheel_angle(r_up @ models[name].spin_axis))
         rows["loads"].append(loads)
         rows["steer"].append(steer)
+        rows["wheel_angle"].append(wheel)
         rows["side_force"].append([side["front_left"] + side["front_right"],
                                    side["rear_left"] + side["rear_right"]])
         sup = mbs.get_force_element_loads(h["chassis_support"])
         rows["support"].append(float(np.max(np.abs(sup["force_j"]))))
     out = {key: np.array(val) for key, val in rows.items()}
-    out["a_y"] = np.asarray(accelerations_g, dtype="float64")
+    out["a_y"] = np.asarray(solved, dtype="float64")
+    out["failed_at"] = failed_at
     loads = out["loads"]
     out["load_transfer"] = np.column_stack(
         [0.5 * (loads[:, 1] - loads[:, 0]), 0.5 * (loads[:, 3] - loads[:, 2])])
@@ -414,12 +462,14 @@ def closed_form(mbs, vm, gravity=9.81):
     for axle_name in ("front", "rear"):
         left = models[f"{axle_name}_left"]
         track = vm.track(axle_name == "front")
-        with_arb = left.arb is not None and left.has_rocker
-        sweep = axle.roll_sweep(mbs, left, [-2e-3, 0.0, 2e-3], with_arb)
+        with_arb = left.arb is not None
+        sweep = axle.roll_sweep(mbs, left, [-2e-3, 0.0, 2e-3], with_arb,
+                                offset=left.static_travel)
         k_susp = float(sweep["roll_stiffness"][1])
         k_tire = left.tire_k * track ** 2 / 2.0
         stiff.append(k_susp * k_tire / (k_susp + k_tire))
-        rc.append(float(kc.bump_sweep(mbs, left, [0.0])["roll_center"][0]))
+        rc.append(float(kc.bump_sweep(
+            mbs, left, [left.static_travel])["roll_center"][0]))
         unsprung.append((2.0 * _unsprung_mass(left) * gravity,
                          float(left.hp["wheel_center"][2])))
         tracks.append(track)
@@ -531,6 +581,134 @@ def kinematic_steer(mbs, vm, rack, gravity=9.81):
         fwd = rot(quat0[c.nums["upright"]]) @ np.array([1.0, 0.0, 0.0])
         rest.append(math.atan2(fwd[1], fwd[0]))
     return 0.5 * (out[0] - rest[0] + out[1] - rest[1])
+
+
+def tire_side_force(vm, front, slip, load, nominal):
+    """The side force (N, + to the left for a slip + to the left) of the
+    nonlinear tire of the handling diagram: the Magic Formula F = D sin(C
+    atan(B alpha)) without curvature (Pacejka, Tire and Vehicle Dynamics,
+    2012, Ch. 4), with the peak D = mu(F_z) F_z and the cornering stiffness
+    BCD = C_alpha(F_z), both load sensitive:
+
+        mu(F_z) = mu (1 - k_mu (F_z / F_z0 - 1)),
+        C_alpha(F_z) = C_alpha0 (F_z / F_z0) (1 - k_c (F_z / F_z0 - 1)),
+
+    F_z0 the static wheel load of the axle (``nominal``).  The side force
+    of a loaded tire grows less than its load: the reason a lateral load
+    transfer costs grip and LLTD sets the limit balance.
+    """
+    load = max(float(load), 0.0)
+    if load <= 0.0:
+        return 0.0
+    ratio = load / nominal
+    mu = vm.mu * (1.0 - vm.mu_sensitivity * (ratio - 1.0))
+    c_alpha = vm.cornering_stiffness[0 if front else 1] * ratio \
+        * (1.0 - vm.stiffness_sensitivity * (ratio - 1.0))
+    d = max(mu, 1e-6) * load
+    c = vm.tire_shape
+    b = max(c_alpha, 1e-9) / (c * d)
+    # Past the peak the curve stays at the peak (a steady state does not
+    # use the falling branch).
+    angle = min(abs(b * slip), math.tan(0.5 * math.pi / c))
+    return math.copysign(d * math.sin(c * math.atan(angle)), slip)
+
+
+def _axle_capacity(vm, loads, nominal):
+    """The largest side force (N) of an axle: the peaks mu(F_z) F_z."""
+    out = 0.0
+    for load in loads:
+        ratio = max(float(load), 0.0) / nominal
+        mu = vm.mu * (1.0 - vm.mu_sensitivity * (ratio - 1.0))
+        out += max(mu, 0.0) * max(float(load), 0.0)
+    return out
+
+
+def _axle_slip(vm, front, force, loads, angles, nominal):
+    """The axle slip x (rad) with sum F(x + wheel angle, F_z) = ``force``,
+    or None past the grip of the axle."""
+    def total(x):
+        return sum(tire_side_force(vm, front, x + psi, fz, nominal)
+                   for fz, psi in zip(loads, angles))
+
+    hi = max(math.tan(0.5 * math.pi / vm.tire_shape) * vm.tire_shape
+             * vm.mu * max(loads) / max(vm.cornering_stiffness), 1e-3) \
+        + max(abs(a) for a in angles)
+    if total(hi) < force:
+        return None
+    lo = -hi
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if total(mid) < force:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def handling_diagram(mbs, vm, accelerations_g=None, gravity=9.81):
+    """The steady-state handling of the vehicle with the nonlinear tire
+    (Pacejka 2012, Sec. 1.3; Milliken & Milliken, RCVD Ch. 5).
+
+    At each lateral acceleration the steady-state rig gives the wheel loads
+    and the wheel angles (static toe and roll steer).  Each axle needs the
+    side force W a_y; its slip x solves sum F(x + psi_i, F_zi) = W a_y.  The
+    understeer angle is delta - L / R = x_f - x_r; its slope at a_y -> 0 is
+    the understeer gradient.  The first axle that cannot carry its force
+    sets the limit: the front (the car pushes) or the rear (it spins).
+
+    :return: dict with ``a_y`` (g), ``understeer_angle`` (rad), ``slip``
+        (front, rear, rad), ``grip_use`` (front, rear: the side force over
+        the peak force of the axle), ``limit`` (g, where the busier axle
+        reaches its grip), ``limited_by`` ("front": the car pushes, "rear":
+        it spins, "lift-off": an inner wheel leaves the road first), and
+        the steady state ``steady``
+    """
+    if accelerations_g is None:
+        accelerations_g = list(np.round(np.arange(0.0, 1.21, 0.05), 3))
+    w_f, w_r = axle_loads(vm, gravity)
+    nominal = (0.5 * w_f, 0.5 * w_r)
+    # The rig marches by continuation and stops where it cannot balance
+    # the turn (a wheel off the ground).
+    steady = steady_state(mbs, vm, accelerations_g, gravity, partial=True)
+    ays, under, slips, usage = [], [], [], []
+    limited_by = None
+    for k, a in enumerate(steady["a_y"]):
+        loads = steady["loads"][k]
+        angles = steady["wheel_angle"][k]
+        # The grip each axle uses: its side force over the sum of the peak
+        # forces mu(F_z) F_z of its tires.
+        use = (w_f * a / _axle_capacity(vm, loads[:2], nominal[0]),
+               w_r * a / _axle_capacity(vm, loads[2:], nominal[1]))
+        x_f = _axle_slip(vm, True, w_f * a, loads[:2], angles[:2],
+                         nominal[0])
+        x_r = _axle_slip(vm, False, w_r * a, loads[2:], angles[2:],
+                         nominal[1])
+        if x_f is None or x_r is None:
+            limited_by = "front" if x_f is None else "rear"
+            usage.append(use)
+            break
+        ays.append(float(a))
+        under.append(x_f - x_r)
+        slips.append((x_f, x_r))
+        usage.append(use)
+    if limited_by is None and steady.get("failed_at") is not None:
+        limited_by = "lift-off"
+    # The limit: where the busier axle reaches its grip, between the last
+    # two accelerations (the grip use is near linear there).
+    limit = ays[-1] if ays else 0.0
+    if len(usage) >= 2:
+        busy = [max(u) for u in usage]
+        a_all = list(steady["a_y"][:len(usage)])
+        if busy[-1] >= 1.0 > busy[-2]:
+            frac = (1.0 - busy[-2]) / (busy[-1] - busy[-2])
+            limit = a_all[-2] + frac * (a_all[-1] - a_all[-2])
+        if limited_by is None and busy[-1] >= 1.0:
+            limited_by = "front" if usage[-1][0] >= usage[-1][1] \
+                else "rear"
+    return {"a_y": np.array(ays), "understeer_angle": np.array(under),
+            "slip": np.array(slips),
+            "grip_use": np.array(usage[:len(ays)]), "limit": limit,
+            "limited_by": limited_by, "steady": steady}
 
 
 def axle_loads(vm, gravity=9.81):

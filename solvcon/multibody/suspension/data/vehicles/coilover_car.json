@@ -1,0 +1,14 @@
+{
+  "name": "Coilover car: MacPherson coilover front, five-link coilover rear (CEVT and Grzyb geometry)",
+  "source": "The corner geometries are the library models macpherson_coilover and five_link_coilover. The vehicle data are assumed values of a compact car on street and track coilovers: sprung mass 1500 kg, 53 percent on the front axle, CG height 520 mm, wheelbase 2700 mm, cornering stiffness 1300 N/deg front and 1400 N/deg rear per tire at the static load, peak friction 1.1, Magic Formula shape factor 1.3, load sensitivities 0.25 (cornering stiffness) and 0.12 (friction) per unit load change.",
+  "front": "macpherson_coilover",
+  "rear": "five_link_coilover",
+  "wheelbase": 2700.0,
+  "sprung_mass": 1500.0,
+  "front_fraction": 0.5333,
+  "cg_height": 520.0,
+  "sprung_inertia": [500.0, 2000.0, 2200.0],
+  "tire": {"cornering_stiffness": [1300.0, 1400.0], "mu": 1.1, "shape": 1.3,
+           "stiffness_load_sensitivity": 0.25, "mu_load_sensitivity": 0.12},
+  "setup": {"front": {}, "rear": {}}
+}
