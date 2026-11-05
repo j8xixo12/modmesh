@@ -42,6 +42,18 @@ def _spin(lo, hi, value, suffix, decimals=1, step=1.0):
     return spin
 
 
+def _clear_grid(grid):
+    """Remove and delete every widget of a grid layout; a removed widget is
+    hidden at once (the deletion waits for the event loop)."""
+    while grid.count():
+        item = grid.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.hide()
+            widget.setParent(None)
+            widget.deleteLater()
+
+
 def _button(text, func):
     button = QPushButton(text)
     button.clicked.connect(lambda: func())
@@ -619,6 +631,109 @@ class ModalTab(QWidget):
                 for it in range(self.table.topLevelItemCount())]
 
 
+class SetupTab(QWidget):
+    """The setup sheet of the corner: the springs, the ride height, the
+    damper, the bar, and the tires on the left, and the engineering
+    numbers of the reference and the current setup on the right."""
+
+    def __init__(self, handlers, parent=None):
+        super().__init__(parent)
+        self._handlers = handlers
+        # The setup fields above the numbers: the dock is often narrow.
+        layout = QVBoxLayout(self)
+        left = QVBoxLayout()
+        box = QGroupBox("Setup (the model file is the first reference)")
+        self.grid = QGridLayout(box)
+        left.addWidget(box)
+        row = QHBoxLayout()
+        self.mass = _spin(10.0, 2000.0, 200.0, " kg", decimals=0, step=10.0)
+        self.mass.setToolTip("The sprung mass on this corner")
+        row.addWidget(QLabel("Corner sprung mass"))
+        row.addWidget(self.mass)
+        row.addStretch(1)
+        left.addLayout(row)
+        row = QHBoxLayout()
+        for key, text in (('readouts', "Update numbers"),
+                          ('reference', "Use as reference"),
+                          ('reset', "Back to the model file"),
+                          ('save', "Save setup..."),
+                          ('load', "Load setup...")):
+            button = _button(text, lambda k=key: handlers['setup_action'](
+                k, self.mass.value()))
+            row.addWidget(button)
+            setattr(self, f"{key}_button", button)
+        left.addLayout(row)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        left.addWidget(self.status)
+        layout.addLayout(left)
+        self.table = QTreeWidget()
+        self.table.setRootIsDecorated(False)
+        self.table.setHeaderLabels(["quantity", "reference", "current",
+                                    "change"])
+        self.table.header().setSectionResizeMode(
+            QHeaderView.ResizeToContents)
+        self.table.setMinimumHeight(260)
+        layout.addWidget(self.table, 1)
+        self.spins = {}
+
+    def show_fields(self, rows):
+        """Lay out the setup fields: ``rows`` of
+        :meth:`SuspensionSession.setup_fields`."""
+        _clear_grid(self.grid)
+        self.spins = {}
+        for col, text in enumerate(("", "current", "reference")):
+            self.grid.addWidget(QLabel(text), 0, col)
+        for it, (key, label, unit, value, ref, (lo, hi), step,
+                 decimals) in enumerate(rows, start=1):
+            if 'clicks' == unit:
+                spin = QSpinBox()
+                spin.setRange(int(lo), int(hi))
+                spin.setValue(int(round(value)))
+                spin.setSuffix(" clicks")
+                spin.setKeyboardTracking(False)
+                ref_text = f"{int(round(ref))} clicks"
+            else:
+                spin = _spin(lo, hi, value, f" {unit}", decimals=decimals,
+                             step=step)
+                ref_text = f"{ref:.{decimals}f} {unit}"
+            spin.valueChanged.connect(
+                lambda v, k=key: self._handlers['setup'](k, v,
+                                                         self.mass.value()))
+            self.grid.addWidget(QLabel(label), it, 0)
+            self.grid.addWidget(spin, it, 1)
+            self.grid.addWidget(QLabel(ref_text), it, 2)
+            self.spins[key] = spin
+
+    def set_value(self, key, value):
+        """Set a field without running the handler (for scripts)."""
+        spin = self.spins[key]
+        spin.blockSignals(True)
+        spin.setValue(value)
+        spin.blockSignals(False)
+
+    def clear(self):
+        self.table.clear()
+        self.status.setText("")
+
+    def show_readouts(self, out):
+        self.table.clear()
+        for label, unit, fmt, ref, cur in out['rows']:
+            def text(v):
+                return "" if v is None else f"{v:{fmt}} {unit}"
+            change = ""
+            if ref is not None and cur is not None:
+                delta = cur - ref
+                change = (f"{delta:+{fmt.lstrip('+')}}"
+                          if abs(delta) > 1e-9 else "")
+            self.table.addTopLevelItem(QTreeWidgetItem(
+                [label, text(ref), text(cur), change]))
+
+    def rows(self):
+        return [[self.table.topLevelItem(it).text(col) for col in range(4)]
+                for it in range(self.table.topLevelItemCount())]
+
+
 class RideTab(QWidget):
     """Ride comfort and road holding of the quarter car on an ISO 8608
     random road: the linear random response with the ISO 2631-1 comfort
@@ -716,11 +831,24 @@ class VehicleTab(QWidget):
         self.vehicle = QComboBox()
         row.addWidget(QLabel("Vehicle"))
         row.addWidget(self.vehicle, 1)
+        self.vehicle.currentIndexChanged.connect(
+            lambda _: handlers['vehicle_picked'](self.vehicle.currentData()))
         self.run = _button("Steady-state cornering",
                            lambda: handlers['vehicle'](
-                               self.vehicle.currentData()))
-        row.addWidget(self.run)
+                               self.vehicle.currentData(), self.setups()))
+        self.handling = _button("Handling diagram",
+                                lambda: handlers['handling'](
+                                    self.vehicle.currentData(),
+                                    self.setups()))
+        self.reference = _button("Use as reference",
+                                 lambda: handlers['vehicle_reference']())
+        for button in (self.run, self.handling, self.reference):
+            row.addWidget(button)
         layout.addLayout(row)
+        box = QGroupBox("Vehicle setup (front / rear axle)")
+        self.setup_grid = QGridLayout(box)
+        layout.addWidget(box)
+        self.setup_spins = {}
         row = QHBoxLayout()
         self.speed = _spin(10.0, 250.0, 72.0, " km/h", decimals=0, step=5.0)
         self.rack = _spin(-50.0, 50.0, 2.0, " mm", decimals=2, step=0.5)
@@ -730,7 +858,7 @@ class VehicleTab(QWidget):
             row.addWidget(widget)
         self.step = _button("Step steer", lambda: handlers['step_steer'](
             self.vehicle.currentData(), self.speed.value(),
-            self.rack.value()))
+            self.rack.value(), self.setups()))
         row.addWidget(self.step)
         row.addStretch(1)
         layout.addLayout(row)
@@ -744,9 +872,109 @@ class VehicleTab(QWidget):
                                        "deg, kN")
         self.yaw_plot = _plots.KCPlot("Step steer yaw rate", "Time [s]",
                                       "deg/s")
+        self.handling_plot = _plots.KCPlot(
+            "Handling diagram: understeer angle delta - L/R",
+            "Lateral acceleration [g]", "deg")
+        plots.addWidget(self.handling_plot, 1)
         plots.addWidget(self.roll_plot, 1)
         plots.addWidget(self.yaw_plot, 1)
+        #: The handling result the plot compares with (dashed).
+        self.reference_handling = None
+        self.last_handling = None
         layout.addLayout(plots, 1)
+
+    #: Labels and spin settings of the vehicle setup fields.
+    SETUP_FIELDS = {
+        'spring_rate': ("spring rate", " N/mm", (1.0, 500.0), 5.0, 1),
+        'arb_rate': ("anti-roll bar", " N m/deg", (0.0, 500.0), 2.0, 1),
+        'ride_height': ("ride height", " mm", (-80.0, 60.0), 5.0, 1),
+        'bump_clicks': ("damper bump", " clicks", (0, 32), 1, 0),
+        'rebound_clicks': ("damper rebound", " clicks", (0, 32), 1, 0),
+    }
+
+    def show_vehicle_setup(self, setups):
+        """Lay out the setup fields of each axle (``{"front": {...},
+        "rear": {...}}``)."""
+        _clear_grid(self.setup_grid)
+        self.setup_spins = {}
+        keys = [k for k in self.SETUP_FIELDS
+                if k in setups.get('front', {}) or k in setups.get('rear',
+                                                                   {})]
+        for col, text in enumerate(("", "front", "rear"), start=0):
+            self.setup_grid.addWidget(QLabel(text), 0, col)
+        for it, key in enumerate(keys, start=1):
+            label, unit, (lo, hi), step, decimals = self.SETUP_FIELDS[key]
+            self.setup_grid.addWidget(QLabel(label), it, 0)
+            for col, axle_name in enumerate(("front", "rear"), start=1):
+                if key not in setups.get(axle_name, {}):
+                    continue
+                value = setups[axle_name][key]
+                if 'clicks' in unit:
+                    spin = QSpinBox()
+                    spin.setRange(int(lo), int(hi))
+                    spin.setValue(int(round(value)))
+                    spin.setSuffix(unit)
+                else:
+                    spin = _spin(lo, hi, value, unit, decimals=decimals,
+                                 step=step)
+                self.setup_grid.addWidget(spin, it, col)
+                self.setup_spins[(axle_name, key)] = spin
+
+    def setups(self):
+        """The vehicle setup the controls show."""
+        out = {'front': {}, 'rear': {}}
+        for (axle_name, key), spin in self.setup_spins.items():
+            out[axle_name][key] = float(spin.value())
+        return out
+
+    def show_handling(self, out, readouts=None):
+        deg = 180.0 / 3.141592653589793
+        curves = []
+        ref = self.reference_handling
+        if ref is not None:
+            curves.append(("reference", list(ref['a_y']),
+                           list(ref['understeer_angle'] * deg),
+                           _plots.PREVIOUS_COLOR, True))
+        curves.append(("current", list(out['a_y']),
+                       list(out['understeer_angle'] * deg),
+                       _plots.CURRENT_COLOR, False))
+        self.handling_plot.set_curves(curves)
+        self.last_handling = out
+        use = out['grip_use']
+        at = int(min(range(len(out['a_y'])),
+                     key=lambda k: abs(out['a_y'][k] - 0.8))) \
+            if len(out['a_y']) else None
+        balance = {"front": "the front axle saturates first: the car "
+                            "pushes (limit understeer)",
+                   "rear": "the rear axle saturates first: the car spins "
+                           "(limit oversteer)",
+                   "lift-off": "an inner wheel leaves the road first",
+                   None: "no limit in the range"}[out['limited_by']]
+        text = (f"Limit lateral acceleration {out['limit']:.3f} g: "
+                f"{balance}.")
+        if at is not None:
+            text += (f"  At {out['a_y'][at]:.2f} g: understeer angle "
+                     f"{out['understeer_angle'][at] * deg:+.3f} deg, grip "
+                     f"used front {use[at][0] * 100:.0f} % / rear "
+                     f"{use[at][1] * 100:.0f} %.")
+        if ref is not None:
+            text += f"  Reference limit {ref['limit']:.3f} g."
+        if readouts is not None:
+            f, r = readouts['front'], readouts['rear']
+            share = f['roll_stiffness'] / (f['roll_stiffness']
+                                           + r['roll_stiffness'])
+            text += (f"  Ride frequency front {f['ride_frequency']:.2f} Hz,"
+                     f" rear {r['ride_frequency']:.2f} Hz (rear / front "
+                     f"{r['ride_frequency'] / f['ride_frequency']:.2f}); "
+                     f"roll stiffness front {f['roll_stiffness']:.0f}, rear "
+                     f"{r['roll_stiffness']:.0f} N m/deg (front share "
+                     f"{share * 100:.0f} %);"
+                     f" damping ratio bump / rebound front "
+                     f"{f['damping_ratio_bump']:.2f} / "
+                     f"{f['damping_ratio_rebound']:.2f}, rear "
+                     f"{r['damping_ratio_bump']:.2f} / "
+                     f"{r['damping_ratio_rebound']:.2f}.")
+        self.status.setText(text)
 
     def show_vehicles(self, rows):
         self.vehicle.blockSignals(True)
@@ -1101,7 +1329,9 @@ class AnalysisPanel(QWidget):
         self.profile = ProfileTab(handlers)
         self.ride = RideTab(handlers)
         self.vehicle = VehicleTab(handlers)
-        for title, tab in (("Sweep", self.sweep), ("Statics", self.statics),
+        self.setup = SetupTab(handlers)
+        for title, tab in (("Setup", self.setup),
+                           ("Sweep", self.sweep), ("Statics", self.statics),
                            ("Dynamics", self.dynamics),
                            ("Modal", self.modal), ("Ride", self.ride),
                            ("Vehicle", self.vehicle),
@@ -1109,6 +1339,8 @@ class AnalysisPanel(QWidget):
                            ("Batch", self.batch),
                            ("Profile", self.profile)):
             self.tabs.addTab(scrollable(tab), title)
+        # The sweep plots first; the setup sheet is one tab to the left.
+        self.tabs.setCurrentIndex(1)
         box = QGroupBox("Warnings")
         self.warnings = _panel.WarningList()
         QVBoxLayout(box).addWidget(self.warnings)

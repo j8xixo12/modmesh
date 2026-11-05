@@ -33,7 +33,7 @@ class Engine(object):
 
     MODULES = ('alignment', 'axle', 'car', 'compliance', 'corner', 'kc',
                'metrics', 'model', 'reference', 'ride', 'road', 'sensitivity',
-               'vehicle')
+               'tuning', 'vehicle')
 
     def __init__(self, mbs, modules):
         self.mbs = mbs

@@ -745,6 +745,33 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         feature.on_library('five_link_rear')
         self.assertEqual("", ride.status.text())
 
+    def test_setup_sheet_and_vehicle_tuning(self):
+        feature = self._open()
+        feature.on_library('macpherson_coilover')
+        tab = feature.analysis.setup
+        self.assertIn('rebound_clicks', tab.spins)
+        self.assertEqual(400.0, tab.mass.value())
+        tab.spins['ride_height'].setValue(-20.0)
+        rows = {row[0]: row for row in tab.rows()}
+        self.assertEqual("+20.0", rows["static travel from design (+ bump)"]
+                         [3])
+        self.assertEqual(-20.0, feature.session.setup['ride_height'])
+        tab.reset_button.click()
+        self.assertEqual({}, feature.session.setup)
+        self.assertEqual(0.0, tab.spins['ride_height'].value())
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        self.assertIn(('rear', 'arb_rate'), vehicle.setup_spins)
+        vehicle.handling.click()
+        self.assertIn("Limit lateral acceleration", vehicle.status.text())
+        vehicle.reference.click()
+        vehicle.setup_spins[('rear', 'arb_rate')].setValue(80.0)
+        vehicle.setup_spins[('front', 'arb_rate')].setValue(5.0)
+        vehicle.handling.click()
+        self.assertIn("rear axle saturates first", vehicle.status.text())
+        self.assertIn("reference", vehicle.handling_plot.labels())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics

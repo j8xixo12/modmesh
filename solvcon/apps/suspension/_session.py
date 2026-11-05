@@ -289,6 +289,11 @@ class SuspensionSession(object):
         if self.kind.name not in self.kinds():
             self.kind = SWEEPS['bump']
         self.adjusters = {name: 0.0 for name, _ in ADJUSTERS}
+        #: The setup changes from the model file (see suspension.tuning).
+        self.setup = {}
+        #: The setup the setup sheet compares with (the model file first).
+        self.setup_reference = {}
+        self._reference_readouts = None
         self.current = self.previous = None
         self.cursor = 0
         self.warnings = []
@@ -400,7 +405,8 @@ class SuspensionSession(object):
         model = copy.deepcopy(self.base_model)
         model.set_adjusters(**{name: values[name] / MM
                                for name, _ in ADJUSTERS})
-        return model
+        # The setup (springs, ride height, damper, bar, tires) on top.
+        return self.engine.tuning.apply(model, self.setup)
 
     def geometry(self, result=None):
         """The :class:`~._scene.CornerGeometry` of a result, of the current
@@ -497,6 +503,114 @@ class SuspensionSession(object):
             raise ValueError(f"model '{self.base_model.name}' has no "
                              f"{name} adjuster")
         self.adjusters[name] = float(value)
+        self._compliance = None
+        return self.run_sweep(keep_previous=True)
+
+    # The setup sheet (P20).
+
+    def setup_fields(self):
+        """``[(key, label, unit, value, reference, (lo, hi), step,
+        decimals)]`` of the setup fields of the model."""
+        tuning = self.engine.tuning
+        base = tuning.baseline(self.base_model)
+        clicks = tuning.click_range(self.base_model)
+        ranges = {
+            'spring_rate': ((1.0, 500.0), 5.0, 1),
+            'ride_height': ((-80.0, 60.0), 5.0, 1),
+            'bump_stop_gap': ((5.0, 150.0), 5.0, 1),
+            'bump_clicks': ((0, clicks or 0), 1, 0),
+            'rebound_clicks': ((0, clicks or 0), 1, 0),
+            'damper_bump': ((0.0, 50.0), 0.5, 2),
+            'damper_rebound': ((0.0, 50.0), 0.5, 2),
+            'arb_rate': ((0.0, 500.0), 2.0, 1),
+            'tire_rate': ((50.0, 1000.0), 10.0, 0),
+        }
+        out = []
+        for key, label, unit in tuning.FIELDS:
+            if key not in base:
+                continue
+            value = self.setup.get(key, base[key])
+            ref = self.setup_reference.get(key, base[key])
+            (lo, hi), step, decimals = ranges[key]
+            out.append((key, label, unit, value, ref, (lo, hi), step,
+                        decimals))
+        return out
+
+    def set_setup(self, name, value):
+        """Change one setup field and re-run the sweep.
+
+        :raises ValueError: for a field the model does not have or a value
+            out of range (the setup keeps its last valid state)
+        """
+        trial = dict(self.setup, **{name: float(value)})
+        self.engine.tuning.apply(self.base_model, trial)
+        self.setup = trial
+        self._compliance = None
+        return self.run_sweep(keep_previous=True)
+
+    def reset_setup(self):
+        """Go back to the setup of the model file."""
+        self.setup = {}
+        self._compliance = None
+        return self.run_sweep(keep_previous=True)
+
+    def set_setup_reference(self):
+        """Make the current setup the one the sheet compares with."""
+        self.setup_reference = dict(self.setup)
+        self._reference_readouts = None
+
+    def setup_readouts(self, sprung_mass):
+        """The readouts of the current setup and of the reference setup.
+
+        :return: dict with ``completed``, ``message``, ``current``,
+            ``reference`` (readout dicts of :func:`tuning.readouts`), and
+            ``rows`` ``[(label, unit, format, reference, current)]``
+        """
+        tuning = self.engine.tuning
+        mbs = self.engine.mbs
+        self.warnings = []
+        try:
+            current = tuning.readouts(mbs, self.model(), float(sprung_mass))
+            key = (tuple(sorted(self.setup_reference.items())),
+                   float(sprung_mass))
+            if self._reference_readouts is None \
+                    or self._reference_readouts[0] != key:
+                base = copy.deepcopy(self.base_model)
+                base.set_adjusters(**{name: self.adjusters[name] / MM
+                                      for name, _ in ADJUSTERS})
+                ref = tuning.readouts(mbs, tuning.apply(
+                    base, self.setup_reference), float(sprung_mass))
+                self._reference_readouts = (key, ref)
+            reference = self._reference_readouts[1]
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'setup', None, f"setup readouts failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        rows = [(label, unit, fmt, reference.get(key), current.get(key))
+                for key, label, unit, fmt in tuning.READOUTS
+                if key in current]
+        return {'completed': True, 'message': '', 'current': current,
+                'reference': reference, 'rows': rows}
+
+    def save_setup(self, path, note=""):
+        """Write the current setup as a setup sheet file."""
+        tuning = self.engine.tuning
+        full = dict(tuning.baseline(self.base_model), **self.setup)
+        tuning.save(path, {'corner': full, 'model': self.model_path},
+                    note=note)
+
+    def load_setup(self, path):
+        """Read a setup sheet file into the current setup.
+
+        :raises ValueError: when the file holds no corner setup or a field
+            the model does not have
+        """
+        setups = self.engine.tuning.load(path)
+        if 'corner' not in setups:
+            raise ValueError(f"{path}: no corner setup")
+        trial = {k: float(v) for k, v in setups['corner'].items()}
+        self.engine.tuning.apply(self.base_model, trial)
+        self.setup = trial
         self._compliance = None
         return self.run_sweep(keep_previous=True)
 
@@ -1303,7 +1417,68 @@ class SuspensionSession(object):
                     out.append((fname[:-5], json.load(fobj)['name']))
         return out
 
-    def run_vehicle(self, stem, accelerations_g=(0.0, 0.1, 0.2, 0.3, 0.4)):
+    #: The vehicle setup fields of the Vehicle tab (per axle).
+    VEHICLE_FIELDS = ('spring_rate', 'arb_rate', 'ride_height',
+                      'bump_clicks', 'rebound_clicks')
+
+    def vehicle_setup(self, stem):
+        """``{"front": setup, "rear": setup}`` of a bundled vehicle (the
+        fields of :attr:`VEHICLE_FIELDS` the corners have)."""
+        vm = self.engine.car.VehicleModel.load(stem)
+        out = {}
+        for axle_name, model in (("front", vm.front), ("rear", vm.rear)):
+            base = self.engine.tuning.baseline(model)
+            out[axle_name] = {k: base[k] for k in self.VEHICLE_FIELDS
+                              if k in base}
+        return out
+
+    def _vehicle(self, stem, setups):
+        vm = self.engine.car.VehicleModel.load(stem)
+        setups = setups or {}
+        return vm.with_setup(front=setups.get('front'),
+                             rear=setups.get('rear'))
+
+    def vehicle_readouts(self, stem, setups=None):
+        """The ride and roll numbers of each axle of a vehicle: the corner
+        readouts of :func:`tuning.readouts` at the corner sprung masses.
+
+        :return: dict with ``completed``, ``message``, ``front``, ``rear``
+        """
+        self.warnings = []
+        try:
+            vm = self._vehicle(stem, setups)
+            out = {axle_name: self.engine.tuning.readouts(
+                self.engine.mbs, model,
+                vm.corner_sprung_mass(axle_name == 'front'))
+                for axle_name, model in (('front', vm.front),
+                                         ('rear', vm.rear))}
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None, f"vehicle readouts failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        out.update({'completed': True, 'message': ''})
+        return out
+
+    def run_handling(self, stem, setups=None):
+        """The handling diagram of a vehicle with a setup.
+
+        :return: dict with ``completed``, ``message``, and the result of
+            :func:`suspension.car.handling_diagram`
+        """
+        car = self.engine.car
+        self.warnings = []
+        try:
+            vm = self._vehicle(stem, setups)
+            out = car.handling_diagram(self.engine.mbs, vm)
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None, f"handling diagram failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        out.update({'completed': True, 'message': '', 'name': vm.name})
+        return out
+
+    def run_vehicle(self, stem, accelerations_g=(0.0, 0.1, 0.2, 0.3, 0.4),
+                    setups=None):
         """Steady-state cornering of a bundled vehicle, with the closed form
         and the understeer gradient.
 
@@ -1316,7 +1491,7 @@ class SuspensionSession(object):
         mbs = self.engine.mbs
         self.warnings = []
         try:
-            vm = car.VehicleModel.load(stem)
+            vm = self._vehicle(stem, setups)
             steady = car.steady_state(mbs, vm, accelerations_g)
             closed = car.closed_form(mbs, vm)
             kus = car.understeer_gradient(vm, steady['roll_steer'])
@@ -1329,7 +1504,7 @@ class SuspensionSession(object):
                 'wheelbase': vm.wheelbase}
 
     def run_step_steer(self, stem, speed_kmh, rack_mm, understeer=None,
-                       duration=4.0):
+                       duration=4.0, setups=None):
         """A step steer of a bundled vehicle, with the steady yaw rate of
         the linear bicycle model (understeer gradient from the steady-state
         rig).
@@ -1343,7 +1518,7 @@ class SuspensionSession(object):
         mbs = self.engine.mbs
         self.warnings = []
         try:
-            vm = car.VehicleModel.load(stem)
+            vm = self._vehicle(stem, setups)
             if understeer is None:
                 steady = car.steady_state(mbs, vm, (0.0, 0.05, 0.1))
                 understeer = car.understeer_gradient(vm,

@@ -637,6 +637,68 @@ class AnalysisTC(unittest.TestCase):
 
 
 @requires_engine
+class SetupSheetTC(unittest.TestCase):
+    """The setup sheet of the session (the numbers are validated in
+    tests/test_multibody_suspension_tuning.py)."""
+
+    def test_setup_changes_every_analysis(self):
+        sess = _session.SuspensionSession(ENGINE)
+        sess.load_library('macpherson_coilover')
+        keys = [row[0] for row in sess.setup_fields()]
+        self.assertEqual(['spring_rate', 'ride_height', 'bump_stop_gap',
+                          'bump_clicks', 'rebound_clicks', 'arb_rate',
+                          'tire_rate'], keys)
+        self.assertTrue(sess.set_setup('spring_rate', 80.0))
+        self.assertEqual(80e3, sess.model().spring_k)
+        sess.set_setup('ride_height', -20.0)
+        out = sess.setup_readouts(400.0)
+        self.assertTrue(out['completed'], out['message'])
+        self.assertAlmostEqual(20.0, out['current']['static_travel'])
+        self.assertAlmostEqual(0.0, out['reference']['static_travel'])
+        self.assertGreater(out['current']['ride_frequency'],
+                           out['reference']['ride_frequency'])
+        # The modal analysis and the ride see the setup.
+        modes = sess.run_modal(400.0)['modes']
+        self.assertAlmostEqual(out['current']['ride_mode'], modes[0][1],
+                               places=3)
+        with self.assertRaises(ValueError):
+            sess.set_setup('bump_clicks', 40)
+        self.assertNotIn('bump_clicks', sess.setup)
+        sess.set_setup_reference()
+        again = sess.setup_readouts(400.0)
+        self.assertAlmostEqual(again['current']['ride_frequency'],
+                               again['reference']['ride_frequency'])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'setup.json')
+            sess.save_setup(path)
+            sess.reset_setup()
+            self.assertEqual({}, sess.setup)
+            sess.load_setup(path)
+            self.assertEqual(80.0, sess.setup['spring_rate'])
+            self.assertEqual(-20.0, sess.setup['ride_height'])
+        # A new model starts from its own file.
+        sess.load_library('five_link_coilover')
+        self.assertEqual({}, sess.setup)
+
+    def test_vehicle_setup_and_handling(self):
+        sess = _session.SuspensionSession(ENGINE)
+        setups = sess.vehicle_setup('coilover_car')
+        self.assertEqual(60.0, setups['front']['spring_rate'])
+        self.assertIn('arb_rate', setups['rear'])
+        base = sess.run_handling('coilover_car', setups)
+        self.assertTrue(base['completed'], base['message'])
+        stiff = dict(setups, rear=dict(setups['rear'], arb_rate=80.0))
+        stiff['front'] = dict(setups['front'], arb_rate=5.0)
+        loose = sess.run_handling('coilover_car', stiff)
+        self.assertEqual('front', base['limited_by'])
+        self.assertEqual('rear', loose['limited_by'])
+        ro = sess.vehicle_readouts('coilover_car', setups)
+        self.assertTrue(ro['completed'], ro['message'])
+        self.assertGreater(ro['front']['roll_stiffness'],
+                           ro['front']['roll_stiffness_springs'])
+
+
+@requires_engine
 class RideVehicleTC(unittest.TestCase):
     """The ride and vehicle analyses of the session (the numbers are
     validated in tests/test_multibody_suspension_ride.py and _car.py)."""

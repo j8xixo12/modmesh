@@ -167,7 +167,12 @@ class SuspensionApp(base.PilotFeature):
                     'road_csv': self.on_road_csv, 'ride': self.on_ride,
                     'ride_time': self.on_ride_time,
                     'vehicle': self.on_vehicle,
-                    'step_steer': self.on_step_steer}
+                    'step_steer': self.on_step_steer,
+                    'setup': self.on_setup,
+                    'setup_action': self.on_setup_action,
+                    'vehicle_picked': self.on_vehicle_picked,
+                    'handling': self.on_handling,
+                    'vehicle_reference': self.on_vehicle_reference}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
@@ -179,6 +184,8 @@ class SuspensionApp(base.PilotFeature):
         self.analysis.warnings.picked = self.tree.select
         self.analysis.sweep.runs.changed = self.on_run_list
         self.analysis.vehicle.show_vehicles(self.session.vehicles())
+        self.on_vehicle_picked(self.analysis.vehicle.vehicle.currentData())
+        self.analysis.setup.show_fields(self.session.setup_fields())
         self.view.picked = self.on_point_picked
         main = self._mgr.mainWindow
         for title, widget, area in (
@@ -413,6 +420,8 @@ class SuspensionApp(base.PilotFeature):
         self.analysis.dynamics.mass.setValue(float(mass))
         self.analysis.modal.mass.setValue(float(mass))
         self.analysis.ride.mass.setValue(float(mass))
+        self.analysis.setup.mass.setValue(float(mass))
+        self.analysis.setup.show_fields(self.session.setup_fields())
         self.refresh()
         return True
 
@@ -433,6 +442,7 @@ class SuspensionApp(base.PilotFeature):
             self.analysis.modal.clear()
             self.analysis.statics.clear()
             self.analysis.ride.clear()
+            self.analysis.setup.clear()
 
     def on_export(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -520,25 +530,117 @@ class SuspensionApp(base.PilotFeature):
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
 
-    def on_vehicle(self, stem):
+    # The setup sheet (P20).
+
+    def on_setup(self, name, value, mass):
+        tab = self.analysis.setup
+        try:
+            self.session.set_setup(name, value)
+        except ValueError as exc:
+            tab.status.setText(f"not applied: {exc}")
+            tab.show_fields(self.session.setup_fields())
+            return
+        self.refresh()
+        self.on_setup_action('readouts', mass)
+
+    def on_setup_action(self, action, mass):
+        tab = self.analysis.setup
+        sess = self.session
+        if 'reference' == action:
+            sess.set_setup_reference()
+            tab.show_fields(sess.setup_fields())
+        elif 'reset' == action:
+            sess.reset_setup()
+            tab.show_fields(sess.setup_fields())
+            self.refresh()
+        elif 'save' == action:
+            path, _ = QFileDialog.getSaveFileName(
+                None, "Save the setup sheet", "", "Setup sheet (*.json)")
+            if not path:
+                return
+            sess.save_setup(path)
+            tab.status.setText(f"setup saved to {path}")
+            return
+        elif 'load' == action:
+            path, _ = QFileDialog.getOpenFileName(
+                None, "Load a setup sheet", "", "Setup sheet (*.json)")
+            if not path:
+                return
+            try:
+                sess.load_setup(path)
+            except (OSError, ValueError) as exc:
+                tab.status.setText(f"not loaded: {exc}")
+                return
+            tab.show_fields(sess.setup_fields())
+            self.refresh()
+        out = self._busy(tab.status, "computing the setup numbers...",
+                         lambda: sess.setup_readouts(mass))
+        if out['completed']:
+            tab.show_readouts(out)
+            tab.status.setText(
+                f"setup changes from the model file: "
+                f"{sess.setup or 'none'}")
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(sess.warnings)
+
+    # The vehicle (P18, P21).
+
+    def on_vehicle_picked(self, stem):
+        if stem is None:
+            return
+        tab = self.analysis.vehicle
+        tab.show_vehicle_setup(self.session.vehicle_setup(stem))
+        tab.reference_handling = None
+        tab.handling_plot.set_curves([])
+
+    def on_handling(self, stem, setups):
+        tab = self.analysis.vehicle
+        sess = self.session
+
+        def run():
+            out = sess.run_handling(stem, setups)
+            if out['completed']:
+                out['readouts'] = sess.vehicle_readouts(stem, setups)
+            return out
+
+        out = self._busy(tab.status, "solving the handling diagram...",
+                         run)
+        if out['completed']:
+            ro = out['readouts']
+            tab.show_handling(out, ro if ro['completed'] else None)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(sess.warnings)
+
+    def on_vehicle_reference(self):
+        tab = self.analysis.vehicle
+        if tab.last_handling is not None:
+            tab.reference_handling = tab.last_handling
+            tab.show_handling(tab.last_handling)
+
+    def on_vehicle(self, stem, setups=None):
         tab = self.analysis.vehicle
         out = self._busy(tab.status, "solving the steady turns...",
-                         lambda: self.session.run_vehicle(stem))
+                         lambda: self.session.run_vehicle(
+                             stem, setups=setups))
         if out['completed']:
-            self._understeer[stem] = out['understeer']
+            key = (stem, repr(sorted((setups or {}).items())))
+            self._understeer[key] = out['understeer']
             tab.show_steady(out)
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
 
-    def on_step_steer(self, stem, speed_kmh, rack_mm):
+    def on_step_steer(self, stem, speed_kmh, rack_mm, setups=None):
         tab = self.analysis.vehicle
+        key = (stem, repr(sorted((setups or {}).items())))
         out = self._busy(tab.status, "marching the step steer (4 s)...",
                          lambda: self.session.run_step_steer(
                              stem, speed_kmh, rack_mm,
-                             self._understeer.get(stem)))
+                             self._understeer.get(key), setups=setups))
         if out['completed']:
-            self._understeer[stem] = out['understeer']
+            self._understeer[key] = out['understeer']
             tab.show_step(out)
         else:
             tab.status.setText(f"failed: {out['message']}")
