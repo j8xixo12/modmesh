@@ -27,8 +27,8 @@ EZ = [0.0, 0.0, 1.0]
 def _add_arb_half(mbs, s, model, chassis, corner, num, origin=None,
                   velocity=None):
     """Add one half-bar on a revolute joint to the chassis and its drop
-    link to the rocker; ``origin`` is the global position of the chassis
-    frame origin (None: the chassis is the ground)."""
+    link to the rocker or the upright; ``origin`` is the global position of
+    the chassis frame origin (None: the chassis is the ground)."""
     piv = model.hp["arb_pivot"]
     co = np.zeros(3) if origin is None else np.asarray(origin, float)
     vel = Z if velocity is None else [float(v) for v in velocity]
@@ -40,11 +40,16 @@ def _add_arb_half(mbs, s, model, chassis, corner, num, origin=None,
     s.Add(mbs.create_joint(1, list(piv - co), Z, Z, Z, ax, ax, chassis,
                            half))
     tip_local = list(model.hp["arb_tip"] - piv)
-    rocker_local = list(model.hp["arb_rocker"] - model.hp["rocker_pivot"])
-    length = float(np.linalg.norm(model.hp["arb_tip"]
-                                  - model.hp["arb_rocker"]))
-    s.Add(mbs.create_joint_distance(6, rocker_local, tip_local, Z, Z, EZ, EZ,
-                                    corner.rocker, half, length))
+    if "rocker" == model.arb.get("link_body", "rocker"):
+        link = model.hp["arb_rocker"]
+        body, local = corner.rocker, link - model.hp["rocker_pivot"]
+    else:
+        up = model.upright_points()
+        link = up["arb_upright"]
+        body, local = corner.upright, link - up["wheel_center"]
+    length = float(np.linalg.norm(model.hp["arb_tip"] - link))
+    s.Add(mbs.create_joint_distance(6, list(local), tip_local, Z, Z, EZ, EZ,
+                                    body, half, length))
     return half
 
 
@@ -87,17 +92,19 @@ def kc_axle(mbs, model_left, with_arb=True):
     return s, out
 
 
-def roll_sweep(mbs, model_left, travels, with_arb=True):
+def roll_sweep(mbs, model_left, travels, with_arb=True, offset=0.0):
     """Opposite wheel travel sweep: roll moment and roll stiffness.
 
     :param travels: values of s (m); z_L = z0 + s, z_R = z0 - s
     :type travels: list
+    :param offset: the heave travel (m, + bump) the roll is about, the
+        static travel of a ride height setting
     :return: dict with s, roll angle (rad), roll moment (N m), roll stiffness
         (N m/rad), generalized stiffness dQ/ds (N/m), and the raw sweep
     :rtype: dict
     """
     s, ax = kc_axle(mbs, model_left, with_arb)
-    z0 = ax["z0"]
+    z0 = ax["z0"] + float(offset)
     half_track = abs(float(model_left.hp["wheel_center"][1]))
     drivers = [ax["left"].travel, ax["right"].travel]
     res = result_arrays(s.sweep(drivers, [[z0 + t, z0 - t] for t in travels],

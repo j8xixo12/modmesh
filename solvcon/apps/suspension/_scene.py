@@ -601,13 +601,19 @@ def arb_segments(left, right, pose):
     """
     ends = [left.hp['arb_pivot'], right.hp['arb_pivot']]
     for geom in (left, right):
+        # The drop link ends on the rocker, or on the upright of a
+        # direct-acting corner.
+        link = 'rocker' if 'arb_rocker' in geom.hp else 'upright'
         frames = geom.frames({key: pose[key] for key in
-                              ('arb' + geom.suffix, 'rocker' + geom.suffix)})
+                              ('arb' + geom.suffix, link + geom.suffix)})
         trans, rot = frames['arb' + geom.suffix]
         tip = trans + rot @ (geom.hp['arb_tip'] - geom.hp['arb_pivot'])
-        trans, rot = frames['rocker' + geom.suffix]
-        drop = trans + rot @ (geom.hp['arb_rocker']
-                              - geom.hp['rocker_pivot'])
+        trans, rot = frames[link + geom.suffix]
+        if 'rocker' == link:
+            drop = trans + rot @ (geom.hp['arb_rocker']
+                                  - geom.hp['rocker_pivot'])
+        else:
+            drop = trans + rot @ geom.upright_local('arb_upright')
         ends += [geom.hp['arb_pivot'], tip, tip, drop]
     return ends
 

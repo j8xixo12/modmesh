@@ -118,7 +118,8 @@ def quarter_car(mbs, model, sprung_mass, road_func=None, gravity=9.81,
         motion_ratio = kc.bump_sweep(mbs, model, [0.0])["motion_ratio"][0]
     # First guess: the spring carries the sprung weight through the motion
     # ratio.  The corner bodies also load it, so the free length is then
-    # corrected until the static equilibrium is the design pose.
+    # corrected until the static equilibrium is at the static travel (the
+    # ride height setting; 0 is the design pose).
     preload = sprung_mass * gravity / motion_ratio
     m.spring_free_offset = preload / m.spring_k  # compression at design
     if road is not None:
@@ -168,8 +169,9 @@ def quarter_car(mbs, model, sprung_mass, road_func=None, gravity=9.81,
         if not s.find_equilibrium(tol=1e-11)["converged"]:
             raise RuntimeError("quarter car: no static equilibrium")
         pos = np.asarray(s.get_body_positions())
+        # The static travel (+ bump) of the ride height setting.
         return float(pos[c.nums["upright"]][2] - pos[CHASSIS][2]
-                     - m.hp["wheel_center"][2])
+                     - m.hp["wheel_center"][2] - m.static_travel)
 
     # Secant iteration on the spring free length: the suspension travel at
     # equilibrium is linear in it near design.
@@ -190,7 +192,7 @@ def quarter_car(mbs, model, sprung_mass, road_func=None, gravity=9.81,
         errors.append(travel_error(s, c))
     if abs(errors[-1]) > 1e-8:
         raise RuntimeError(f"quarter car: the static equilibrium is "
-                           f"{errors[-1]:.3g} m off design")
+                           f"{errors[-1]:.3g} m off the static travel")
     # The returned system is at its static equilibrium (time 0).
     handles = {"chassis": chassis, "corner": c, "tire": tire, "stop": stop,
                "stop_lengths": stop_lengths, "model": m,
@@ -212,7 +214,7 @@ def effective_unsprung_mass(mbs, model):
 
 
 def linear_quarter_car(mbs, model, sprung_mass, wheel_rate, tire_rate,
-                       tire_load=0.0, h=1e-5):
+                       tire_load=0.0, h=1e-5, travel=0.0):
     """Exact linear quarter car in (chassis z, suspension travel) coordinates.
 
     Built from K&C sensitivities and the Lagrangian, independent of the
@@ -227,6 +229,8 @@ def linear_quarter_car(mbs, model, sprung_mass, wheel_rate, tire_rate,
     The forward rate a_x = dx_c/dz of the contact point gives the travel
     the generalized force a_x F_x of a longitudinal tire force F_x.
 
+    :param travel: the wheel travel (m, + bump) of the linearization, the
+        static travel of a ride height setting
     :return: dict with M, K (2x2), a, a_prime, and a_x
     :rtype: dict
     """
@@ -234,7 +238,8 @@ def linear_quarter_car(mbs, model, sprung_mass, wheel_rate, tire_rate,
     from .metrics import rot
 
     s, c = kc_rig(mbs, model)
-    res = result_arrays(s.sweep(c.travel, [c.z0]))
+    z_lin = c.z0 + float(travel)
+    res = result_arrays(s.sweep(c.travel, [z_lin]))
 
     up_n = c.nums["upright"]
     spin = np.asarray(model.spin_axis, dtype="float64")
@@ -266,9 +271,9 @@ def linear_quarter_car(mbs, model, sprung_mass, wheel_rate, tire_rate,
                                                  arm)
         return float(vel[0])
 
-    side_res = result_arrays(s.sweep(c.travel, [c.z0 - h, c.z0 + h]))
+    side_res = result_arrays(s.sweep(c.travel, [z_lin - h, z_lin + h]))
     a_prime = (patch_rate(side_res, 1) - patch_rate(side_res, 0)) / (2 * h)
-    s.sweep(c.travel, [c.z0])
+    s.sweep(c.travel, [z_lin])
     m11, m12, m22 = sprung_mass, 0.0, 0.0
     bodies = [("upright", model.upright_mass, model.upright_inertia),
               ("rocker", model.rocker_mass, model.rocker_inertia),

@@ -1,0 +1,206 @@
+{
+  "name": "Five-link coilover (Grzyb & Kowalski 2001 rear geometry; aftermarket coilover and rear bar)",
+  "type": "five_link",
+  "source": "A. Grzyb, M. Kowalski, 'Optimisation of five-link suspension mechanism of a vehicle solid tyres', Engineering Transactions 49(1), 47-63, 2001 (IPPT PAN). doi:10.24423/engtrans.573.2001 https://et.ippt.pan.pl/index.php/et/article/view/573. Optimized link points (p.57-58); the wheel center is the axis point B7 (the travel point of the paper), the spin axis B6 to B7. Axes: x forward (assumed; the paper does not state the sense), y toward the wheel, z up. The radius 302 mm puts the ground at z = 0 (assumed; the paper gives no radius). Masses, spring points, and rates are assumed. Library model: the geometry is the validation model in tests/data/multibody/grzyb_five_link; masses, spring and damper rates, and stops are assumed for the dynamics. Coilover library model: the validated five-link geometry with a direct-acting coilover on the knuckle (spring 50 N/mm, 32-click damper adjustable in bump and rebound) and a rear anti-roll bar with drop links to the knuckles. The rates, the damper curves, and the bar geometry are assumed values, not measured parts.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 302.0,
+    "center": [
+      0.0,
+      705.0,
+      302.0
+    ],
+    "spin_axis": [
+      0.004,
+      0.9999,
+      0.015
+    ]
+  },
+  "upright": {
+    "mass": 30.0,
+    "inertia": [
+      0.8,
+      1.1,
+      0.8
+    ]
+  },
+  "links": {
+    "link_1": {
+      "chassis": [
+        -109.0,
+        208.0,
+        239.0
+      ],
+      "upright": [
+        -43.0,
+        662.0,
+        208.0
+      ]
+    },
+    "link_2": {
+      "chassis": [
+        317.0,
+        500.0,
+        251.0
+      ],
+      "upright": [
+        44.0,
+        632.0,
+        163.0
+      ]
+    },
+    "link_3": {
+      "chassis": [
+        217.0,
+        419.0,
+        302.0
+      ],
+      "upright": [
+        141.0,
+        666.0,
+        269.0
+      ]
+    },
+    "link_4": {
+      "chassis": [
+        193.0,
+        451.0,
+        403.0
+      ],
+      "upright": [
+        78.0,
+        662.0,
+        397.0
+      ]
+    },
+    "link_5": {
+      "chassis": [
+        3.0,
+        341.0,
+        422.0
+      ],
+      "upright": [
+        -5.0,
+        666.0,
+        427.0
+      ]
+    }
+  },
+  "spring": {
+    "upright": [
+      10.0,
+      610.0,
+      230.0
+    ],
+    "chassis": [
+      10.0,
+      590.0,
+      560.0
+    ],
+    "k": 50.0,
+    "free_length_offset": 0.0,
+    "note": "spring points assumed (not in the source)",
+    "damper": {
+      "kind": "adjustable",
+      "clicks": 32,
+      "bump_clicks": 12,
+      "rebound_clicks": 16,
+      "soft": {
+        "bump": [
+          1.0,
+          0.4
+        ],
+        "rebound": [
+          2.0,
+          0.8
+        ],
+        "knee": 100.0
+      },
+      "firm": {
+        "bump": [
+          3.5,
+          1.2
+        ],
+        "rebound": [
+          8.0,
+          2.5
+        ],
+        "knee": 100.0
+      },
+      "note": "N.s/mm low-speed and high-speed slopes, knee at 100 mm/s; click 0 is full soft (assumed curves)"
+    }
+  },
+  "stops": {
+    "bump_travel": 50.0,
+    "droop_travel": -90.0,
+    "k": 150.0,
+    "k2": 2000.0,
+    "c": 2.0,
+    "note": "coilover bump stop 50 mm from static: a progressive polyurethane stop (150 N/mm and 2000 N/mm^2, assumed)"
+  },
+  "adjusters": {
+    "camber_shim": {
+      "kind": "link_length",
+      "link": "link_5",
+      "sign": -1.0,
+      "note": "eccentric on the upper link 5 (assumed adjuster)"
+    },
+    "toe_link": {
+      "kind": "link_length",
+      "link": "link_1",
+      "sign": 1.0,
+      "note": "length of link 1 (assumed adjuster)"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 2700.0,
+    "cg_height": 550.0,
+    "front_brake_fraction": 0.3,
+    "half_track": 705.0,
+    "corner_mass": 350.0
+  },
+  "tire": {
+    "k": 230.0,
+    "c": 0.1
+  },
+  "bushings": {
+    "k": 3000.0,
+    "k_rot": 30.0
+  },
+  "arb": {
+    "bar_pivot": [
+      260.0,
+      420.0,
+      230.0
+    ],
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "arm_tip": [
+      60.0,
+      590.0,
+      230.0
+    ],
+    "link_point": [
+      60.0,
+      620.0,
+      420.0
+    ],
+    "k": 600.0,
+    "mass": 0.8,
+    "inertia": [
+      0.004,
+      0.004,
+      0.004
+    ],
+    "note": "bar torsion rate N.m/rad (a 16 mm bar); the 200 mm arms and the 1.41 m track give about 520 N.m/deg of axle roll stiffness; drop link from the bar arm to the knuckle (assumed geometry)"
+  }
+}

@@ -361,7 +361,8 @@ class LinearCorner(_LinearRide):
     """The linear quarter car of a corner model: the exact K&C
     linearization of :func:`vehicle.linear_quarter_car` in (chassis z,
     travel), with the suspension damping c MR^2 on the travel (the damper
-    acts on the spring line) and the tire damping on the contact point.
+    acts on the spring line) and the tire damping on the contact point, at
+    the static travel of the model (its ride height).
 
     :ivar motion_ratio: spring compression per wheel travel at design
     :ivar wheel_rate: wheel rate at design (N/m)
@@ -373,7 +374,9 @@ class LinearCorner(_LinearRide):
         # car finds the free length that holds the design pose.
         _, handles = vehicle.quarter_car(mbs, model, sprung_mass,
                                          gravity=gravity)
-        sweep = kc.bump_sweep(mbs, handles['model'], [-1e-3, 0.0, 1e-3])
+        s0 = float(model.static_travel)
+        sweep = kc.bump_sweep(mbs, handles['model'],
+                              [s0 - 1e-3, s0, s0 + 1e-3])
         if not sweep['completed']:
             raise RuntimeError(f"ride: the K&C sweep failed: "
                                f"{sweep['message']}")
@@ -383,7 +386,7 @@ class LinearCorner(_LinearRide):
                                                    gravity)
         lin = vehicle.linear_quarter_car(mbs, model, sprung_mass,
                                          self.wheel_rate, model.tire_k,
-                                         tire_load=weight)
+                                         tire_load=weight, travel=s0)
         a = lin['a']
         ct = model.tire_c
         c_w = model.spring_c * self.motion_ratio ** 2

@@ -23,6 +23,9 @@ MM = 1e-3
 def damper_table(spec):
     """The force-velocity table of a damper block, in SI.
 
+    An ``adjustable`` block is a click damper: ``clicks`` positions,
+    ``soft`` and ``firm`` asymmetric curves, and the settings
+    ``bump_clicks`` and ``rebound_clicks`` (0 is soft).
     A ``table`` block lists the curve: ``velocity`` (mm/s, > 0 rebound) and
     ``force`` (N, > 0 in rebound).  An ``asymmetric`` block gives the slopes
     in N.s/mm: ``bump`` and ``rebound``, each one value (linear) or a pair
@@ -36,6 +39,28 @@ def damper_table(spec):
     :raises ValueError: for an unknown kind or a bad curve
     """
     kind = spec.get("kind", "asymmetric")
+    if "adjustable" == kind:
+        # A click-adjustable damper: the bump and rebound slopes move from
+        # the soft curve (click 0) to the firm curve (the last click) with
+        # their own adjusters.
+        clicks = int(spec["clicks"])
+        if clicks < 1:
+            raise ValueError("damper: an adjustable damper needs clicks >= 1")
+        out = {"kind": "asymmetric",
+               "knee": spec["soft"].get("knee", 100.0)}
+        for side, key in (("bump", "bump_clicks"),
+                          ("rebound", "rebound_clicks")):
+            click = float(spec.get(key, 0))
+            if not 0.0 <= click <= clicks:
+                raise ValueError(f"damper: {key} is 0 to {clicks}")
+            w = click / clicks
+
+            def pair(value):
+                return value if isinstance(value, (list, tuple)) else \
+                    [value, value]
+            soft, firm = pair(spec["soft"][side]), pair(spec["firm"][side])
+            out[side] = [(1.0 - w) * a + w * b for a, b in zip(soft, firm)]
+        return damper_table(out)
     if "table" == kind:
         velocities = [float(v) * MM for v in spec["velocity"]]
         forces = [float(f) for f in spec["force"]]
@@ -249,9 +274,14 @@ class CornerModel:
         # The linear damper (N.s/m); a damper block below replaces it.
         self.spring_c = s["c"] * 1e3 if "damper" not in s else 0.0
         self.spring_free_offset = s.get("free_length_offset", 0.0) * MM
+        # The static wheel travel (m, + bump) the spring holds: 0 at the
+        # design pose; a ride height setting moves it (lower is + bump).
+        self.static_travel = -data.get("ride_height", 0.0) * MM
         # The damper force-velocity curve ((velocities m/s, forces N), the
         # rate > 0 in rebound), or None for the linear damper spring_c.
         self.damper_curve = None
+        # The damper block as written (the setup re-reads its clicks).
+        self.damper_spec = copy.deepcopy(s.get("damper"))
         if "damper" in s:
             self.damper_curve = damper_table(s["damper"])
             # The linear analyses (K&C, modes, the linear ride response)
@@ -280,15 +310,24 @@ class CornerModel:
         self.adjust = {name: 0.0 for name in self.ADJUSTERS}
         self.arb = None
         if "arb" in data:
-            if not self.has_rocker:
-                raise ValueError("the anti-roll bar drop link needs a "
-                                 "rocker")
+            # The drop link of the bar ends on the rocker (``rocker_point``)
+            # or, on a direct-acting corner, on the upright (``link_point``,
+            # for example the strut tube).
             a = data["arb"]
             self.hp["arb_pivot"] = np.array(a["bar_pivot"]) * MM
             self.hp["arb_tip"] = np.array(a["arm_tip"]) * MM
-            self.hp["arb_rocker"] = np.array(a["rocker_point"]) * MM
+            if "rocker_point" in a:
+                if not self.has_rocker:
+                    raise ValueError("the anti-roll bar rocker_point needs "
+                                     "a rocker; use link_point")
+                self.hp["arb_rocker"] = np.array(a["rocker_point"]) * MM
+                link_body = "rocker"
+            else:
+                self.hp["arb_upright"] = np.array(a["link_point"]) * MM
+                link_body = "upright"
             self.arb = {"axis": np.array(a["axis"], float), "k": a["k"],
-                        "mass": a["mass"], "inertia": list(a["inertia"])}
+                        "mass": a["mass"], "inertia": list(a["inertia"]),
+                        "link_body": link_body}
         t = data.get("tire", {})
         self.tire_k = t.get("k", 300.0) * 1e3
         self.tire_c = t.get("c", 0.0) * 1e3
@@ -387,6 +426,8 @@ class CornerModel:
             names.append("spring_upright")
         if "strut_outer" in self.hp:
             names.append("strut_outer")
+        if "arb_upright" in self.hp:
+            names.append("arb_upright")
         return names
 
     def arm_points(self, arm):

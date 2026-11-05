@@ -1,0 +1,220 @@
+{
+  "name": "MacPherson coilover (CEVT front geometry, Yang 2019; aftermarket coilover and front bar)",
+  "type": "macpherson",
+  "source": "Xunbo Yang, 'Suspension Kinematics Programme', Master's thesis in Automotive Engineering, Chalmers University of Technology, Dept. of Mechanics and Maritime Sciences, Gothenburg, 2019. Industrial partner CEVT (China Euro Vehicle Technology). Validation against MSC ADAMS/Car. https://odr.chalmers.se/server/api/core/bitstreams/04f5c74e-06bd-4afb-a74f-633217050d8e/content. Hardpoints from Fig 4.1 (thesis p.51), loaded tire radius and travel from Table 4.1; the thesis axes (x rearward, y right) are turned half a turn about z to ISO 8855 and the origin is on the ground below the wheel center. Masses, spring and damper rates are not in the source and are assumed. Library model: the geometry is the validation model in tests/data/multibody/chalmers_macpherson; masses, spring and damper rates, and stops are assumed for the dynamics. Coilover library model: the validated MacPherson geometry with a full-length adjustable coilover (spring 60 N/mm, 32-click damper adjustable in bump and rebound, pillowball camber plate on the top mount) and a front anti-roll bar with drop links to the strut tubes. The coilover and bar rates, the damper curves, and the bar geometry are assumed values of a street and track setup, not measured parts.",
+  "units": {
+    "length": "mm",
+    "mass": "kg",
+    "stiffness": "N/mm",
+    "damping": "N.s/mm"
+  },
+  "side": "left",
+  "wheel": {
+    "radius": 331.8,
+    "center": [
+      -0.0,
+      793.8,
+      331.8
+    ],
+    "spin_axis": [
+      -0.0,
+      0.9999,
+      0.0157
+    ]
+  },
+  "upright": {
+    "mass": 35.0,
+    "inertia": [
+      0.9,
+      1.3,
+      0.9
+    ]
+  },
+  "links": {
+    "lower_front": {
+      "chassis": [
+        -17.88,
+        373.0,
+        245.7529
+      ],
+      "upright": [
+        12.92,
+        766.0,
+        217.2529
+      ]
+    },
+    "lower_rear": {
+      "chassis": [
+        -301.68,
+        408.0,
+        252.7529
+      ],
+      "upright": [
+        12.92,
+        766.0,
+        217.2529
+      ]
+    },
+    "tie_rod": {
+      "rack": [
+        -194.68,
+        370.0,
+        308.2529
+      ],
+      "upright": [
+        -151.18,
+        732.518,
+        295.3529
+      ]
+    }
+  },
+  "rack": {
+    "mass": 1.5,
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "strut": {
+    "upright": [
+      -0.328,
+      645.989,
+      397.3819
+    ],
+    "top_mount": [
+      -53.541,
+      589.724,
+      900.2239
+    ]
+  },
+  "spring": {
+    "upright": [
+      -40.28,
+      643.5,
+      719.2529
+    ],
+    "chassis": [
+      -52.6,
+      590.719,
+      891.3279
+    ],
+    "k": 60.0,
+    "free_length_offset": 0.0,
+    "note": "coil spring seats hp59 (strut tube) and hp58 (top mount); rates assumed",
+    "damper": {
+      "kind": "adjustable",
+      "clicks": 32,
+      "bump_clicks": 12,
+      "rebound_clicks": 16,
+      "soft": {
+        "bump": [
+          1.2,
+          0.5
+        ],
+        "rebound": [
+          2.4,
+          0.9
+        ],
+        "knee": 100.0
+      },
+      "firm": {
+        "bump": [
+          4.0,
+          1.4
+        ],
+        "rebound": [
+          9.0,
+          3.0
+        ],
+        "knee": 100.0
+      },
+      "note": "N.s/mm low-speed and high-speed slopes, knee at 100 mm/s; click 0 is full soft (assumed curves)"
+    }
+  },
+  "stops": {
+    "bump_travel": 50.0,
+    "droop_travel": -110.0,
+    "k": 150.0,
+    "k2": 2000.0,
+    "c": 2.0,
+    "note": "coilover bump stop 50 mm from static: a progressive polyurethane stop (150 N/mm and 2000 N/mm^2, assumed); droop stop at the end of the published range"
+  },
+  "adjusters": {
+    "camber_shim": {
+      "kind": "chassis_point",
+      "points": [
+        "strut_inner"
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "note": "camber plate: + moves the top mount inboard (more negative camber)"
+    },
+    "caster_shim": {
+      "kind": "chassis_point",
+      "points": [
+        "strut_inner"
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "note": "+ moves the top mount forward (less caster)"
+    },
+    "toe_link": {
+      "kind": "link_length",
+      "link": "tie_rod",
+      "sign": 1.0,
+      "note": "+ lengthens the tie rod"
+    }
+  },
+  "vehicle": {
+    "wheelbase": 2730.0,
+    "cg_height": 550.0,
+    "front_brake_fraction": 0.7,
+    "half_track": 793.8,
+    "corner_mass": 400.0
+  },
+  "tire": {
+    "k": 230.0,
+    "c": 0.1
+  },
+  "bushings": {
+    "k": 3000.0,
+    "k_rot": 30.0
+  },
+  "arb": {
+    "bar_pivot": [
+      -220.0,
+      450.0,
+      270.0
+    ],
+    "axis": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "arm_tip": [
+      -20.0,
+      610.0,
+      270.0
+    ],
+    "link_point": [
+      -20.0,
+      640.0,
+      470.0
+    ],
+    "k": 1100.0,
+    "mass": 1.0,
+    "inertia": [
+      0.005,
+      0.005,
+      0.005
+    ],
+    "note": "bar torsion rate N.m/rad (a 19 mm steel bar of 0.9 m: G J / L about 1100); the 200 mm arms and the 1.59 m track give about 1200 N.m/deg of axle roll stiffness; drop link from the bar arm to the strut tube (assumed geometry)"
+  }
+}
