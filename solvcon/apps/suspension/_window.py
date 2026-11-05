@@ -862,11 +862,28 @@ class VehicleTab(QWidget):
         row.addWidget(self.step)
         row.addStretch(1)
         layout.addLayout(row)
+        row = QHBoxLayout()
+        self.bias = _spin(20.0, 95.0, 65.0, " % front", decimals=1,
+                          step=1.0)
+        self.drive = QComboBox()
+        for label, split in _session.SuspensionSession.DRIVES:
+            self.drive.addItem(label, split)
+        for label, widget in (("Brake bias", self.bias),
+                              ("Drive", self.drive)):
+            row.addWidget(QLabel(label))
+            row.addWidget(widget)
+        self.longitudinal = _button(
+            "Braking / traction", lambda: handlers['longitudinal'](
+                self.vehicle.currentData(), self.bias.value() / 100.0,
+                self.drive.currentData(), self.setups()))
+        row.addWidget(self.longitudinal)
+        row.addStretch(1)
+        layout.addLayout(row)
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.status)
-        plots = QHBoxLayout()
+        plots = QGridLayout()
         self.roll_plot = _plots.KCPlot("Roll and load transfer",
                                        "Lateral acceleration [g]",
                                        "deg, kN")
@@ -875,9 +892,15 @@ class VehicleTab(QWidget):
         self.handling_plot = _plots.KCPlot(
             "Handling diagram: understeer angle delta - L/R",
             "Lateral acceleration [g]", "deg")
-        plots.addWidget(self.handling_plot, 1)
-        plots.addWidget(self.roll_plot, 1)
-        plots.addWidget(self.yaw_plot, 1)
+        self.brake_plot = _plots.KCPlot(
+            "Braking: grip used by each axle", "Deceleration [g]",
+            "share of grip")
+        # Two by two: the handling and the braking above, the roll and the
+        # step steer below.
+        plots.addWidget(self.handling_plot, 0, 0)
+        plots.addWidget(self.brake_plot, 0, 1)
+        plots.addWidget(self.roll_plot, 1, 0)
+        plots.addWidget(self.yaw_plot, 1, 1)
         #: The handling result the plot compares with (dashed).
         self.reference_handling = None
         self.last_handling = None
@@ -975,6 +998,41 @@ class VehicleTab(QWidget):
                      f"{r['damping_ratio_bump']:.2f} / "
                      f"{r['damping_ratio_rebound']:.2f}.")
         self.status.setText(text)
+
+    def show_longitudinal(self, out):
+        brake, traction = out['brake'], out['traction']
+        decel = list(brake['decel'])
+        self.brake_plot.set_curves([
+            ("front", decel, list(brake['use'][:, 0]),
+             _plots.CURRENT_COLOR, False),
+            ("rear", decel, list(brake['use'][:, 1]),
+             _plots.PREVIOUS_COLOR, False),
+            ("ideal front bias", decel, list(brake['ideal_bias']),
+             (40, 150, 70), True)])
+        k = min(range(len(decel)), key=lambda i: abs(decel[i]
+                                                     - brake['limit']))
+        b, d, f = out['braking'], out['driving'], out['formula']
+        spin = {"front": "the front wheels spin first",
+                "rear": "the rear wheels spin first",
+                None: "no limit in the range"}[traction['spins']]
+        self.status.setText(
+            f"Braking with {out['brake_bias'] * 100:.0f} % front: limit "
+            f"{brake['limit']:.3f} g, the {brake['locks'] or 'no'} axle "
+            f"locks first; the ideal bias there is "
+            f"{brake['ideal_bias'][k] * 100:.0f} % front.  Pitch "
+            f"{b['pitch']:+.2f} deg/g (nose down +); dive "
+            f"{b['travel'][0]:+.1f} mm/g front, {b['travel'][1]:+.1f} mm/g "
+            f"rear (+ bump); anti-dive {b['anti'][0] * 100:.0f} % (RCVD "
+            f"{f['anti_dive'] * 100:.0f} %), anti-lift "
+            f"{b['anti'][1] * 100:.0f} % (RCVD {f['anti_lift'] * 100:.0f} "
+            f"%).  Traction ({out['drive_split'] * 100:.0f} % front): "
+            f"limit {traction['limit']:.3f} g, {spin}; pitch "
+            f"{d['pitch']:+.2f} deg/g; squat {d['travel'][1]:+.1f} mm/g "
+            f"rear, front {d['travel'][0]:+.1f} mm/g; anti-squat "
+            f"{d['anti'][1] * 100:.0f} % (RCVD "
+            f"{f['anti_squat'] * 100:.0f} %), front anti-lift "
+            f"{d['anti'][0] * 100:.0f} % (RCVD "
+            f"{f['anti_lift_drive'] * 100:.0f} %).")
 
     def show_vehicles(self, rows):
         self.vehicle.blockSignals(True)

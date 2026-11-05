@@ -699,6 +699,28 @@ class SetupSheetTC(unittest.TestCase):
 
 
 @requires_engine
+class LongitudinalTC(unittest.TestCase):
+    """Braking and traction of the session (validated in
+    tests/test_multibody_suspension_longitudinal.py)."""
+
+    def test_braking_and_traction(self):
+        sess = _session.SuspensionSession(ENGINE)
+        out = sess.run_longitudinal('coilover_car', 0.65, 0.0)
+        self.assertTrue(out['completed'], out['message'])
+        self.assertEqual('rear', out['brake']['locks'])
+        self.assertEqual('rear', out['traction']['spins'])
+        self.assertGreater(out['braking']['pitch'], 0.0)
+        self.assertLess(out['driving']['pitch'], 0.0)
+        self.assertAlmostEqual(out['braking']['anti'][0],
+                               out['formula']['anti_dive'], delta=0.03)
+        front = sess.run_longitudinal('coilover_car', 0.85, 1.0)
+        self.assertEqual('front', front['brake']['locks'])
+        self.assertEqual('front', front['traction']['spins'])
+        self.assertLess(front['traction']['limit'],
+                        out['traction']['limit'])
+
+
+@requires_engine
 class RideVehicleTC(unittest.TestCase):
     """The ride and vehicle analyses of the session (the numbers are
     validated in tests/test_multibody_suspension_ride.py and _car.py)."""

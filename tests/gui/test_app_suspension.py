@@ -772,6 +772,20 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         self.assertIn("rear axle saturates first", vehicle.status.text())
         self.assertIn("reference", vehicle.handling_plot.labels())
 
+    def test_vehicle_braking_and_traction(self):
+        feature = self._open()
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        vehicle.bias.setValue(80.0)
+        vehicle.drive.setCurrentIndex(vehicle.drive.findData(1.0))
+        vehicle.longitudinal.click()
+        text = vehicle.status.text()
+        self.assertIn("the front axle locks first", text)
+        self.assertIn("the front wheels spin first", text)
+        self.assertIn("anti-dive", text)
+        self.assertIn("front", vehicle.brake_plot.labels())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics

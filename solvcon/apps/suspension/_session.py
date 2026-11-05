@@ -1477,6 +1477,59 @@ class SuspensionSession(object):
         out.update({'completed': True, 'message': '', 'name': vm.name})
         return out
 
+    #: Drive layouts of the Vehicle tab: (label, front share).
+    DRIVES = (('rear drive', 0.0), ('front drive', 1.0),
+              ('all-wheel drive 40 / 60', 0.4))
+
+    def run_longitudinal(self, stem, brake_bias, drive_split, setups=None):
+        """Braking and traction of a vehicle with a setup: the brake limit
+        of the bias and the traction limit of the drive, the pitch and the
+        corner travel per g, and the anti fractions (engine and the RCVD
+        formula).
+
+        :param brake_bias: front share of the braking force (0 to 1)
+        :param drive_split: front share of the drive force (0 to 1)
+        :return: dict with ``completed``, ``message``, ``brake``,
+            ``traction``, ``braking`` and ``driving`` (dicts of ``pitch``
+            deg/g, ``travel`` front and rear mm/g, ``anti`` front and rear
+            fractions), and ``formula`` (RCVD anti fractions)
+        """
+        lo = self.engine.longitudinal
+        mbs = self.engine.mbs
+        self.warnings = []
+        try:
+            vm = self._vehicle(stem, setups)
+            brake = lo.brake_balance(mbs, vm, float(brake_bias))
+            traction = lo.traction_limit(mbs, vm, float(drive_split))
+            geo = lo.anti_geometry(mbs, vm)
+            out = {}
+            for key, a, kw in (('braking', -0.1,
+                                {'brake_bias': float(brake_bias)}),
+                               ('driving', 0.1,
+                                {'drive_split': float(drive_split)})):
+                st = lo.steady_state(mbs, vm, [0.0, a], **kw)
+                _, anti = lo.predicted_travel(mbs, vm, st)
+                out[key] = {
+                    'pitch': math.degrees(st['pitch'][1]) / abs(a),
+                    'travel': [st['travel'][1][0] / abs(a) * MM,
+                               st['travel'][1][2] / abs(a) * MM],
+                    'anti': [anti[1][0], anti[1][2]]}
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None,
+                f"braking and traction failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        bias, split = float(brake_bias), float(drive_split)
+        out.update({
+            'completed': True, 'message': '', 'brake': brake,
+            'traction': traction, 'brake_bias': bias, 'drive_split': split,
+            'formula': {
+                'anti_dive': bias * geo['front']['anti_brake'],
+                'anti_lift': (1.0 - bias) * geo['rear']['anti_brake'],
+                'anti_squat': (1.0 - split) * geo['rear']['anti_drive'],
+                'anti_lift_drive': split * geo['front']['anti_drive']}})
+        return out
+
     def run_vehicle(self, stem, accelerations_g=(0.0, 0.1, 0.2, 0.3, 0.4),
                     setups=None):
         """Steady-state cornering of a bundled vehicle, with the closed form

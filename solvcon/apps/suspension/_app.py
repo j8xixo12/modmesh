@@ -172,7 +172,8 @@ class SuspensionApp(base.PilotFeature):
                     'setup_action': self.on_setup_action,
                     'vehicle_picked': self.on_vehicle_picked,
                     'handling': self.on_handling,
-                    'vehicle_reference': self.on_vehicle_reference}
+                    'vehicle_reference': self.on_vehicle_reference,
+                    'longitudinal': self.on_longitudinal}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
@@ -612,6 +613,18 @@ class SuspensionApp(base.PilotFeature):
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(sess.warnings)
+
+    def on_longitudinal(self, stem, brake_bias, drive_split, setups=None):
+        tab = self.analysis.vehicle
+        out = self._busy(tab.status, "solving the braking and the traction "
+                                     "states...",
+                         lambda: self.session.run_longitudinal(
+                             stem, brake_bias, drive_split, setups))
+        if out['completed']:
+            tab.show_longitudinal(out)
+        else:
+            tab.status.setText(f"failed: {out['message']}")
+        self.analysis.warnings.show_entries(self.session.warnings)
 
     def on_vehicle_reference(self):
         tab = self.analysis.vehicle
