@@ -289,6 +289,8 @@ class SuspensionSession(object):
         if self.kind.name not in self.kinds():
             self.kind = SWEEPS['bump']
         self.adjusters = {name: 0.0 for name, _ in ADJUSTERS}
+        #: The model differs from its file (an edit kept in the session).
+        self.model_dirty = False
         #: The setup changes from the model file (see suspension.tuning).
         self.setup = {}
         #: The setup the setup sheet compares with (the model file first).
@@ -390,6 +392,13 @@ class SuspensionSession(object):
         forces.append(("tire", [
             ("vertical rate", f"{model.tire_k * 1.e-3:g} N/mm"),
             ("damping", f"{model.tire_c * 1.e-3:g} N.s/mm")]))
+        if model.stops is not None:
+            st = model.stops
+            forces.append(("travel stops", [
+                ("bump stop at", f"{st['bump_travel'] * MM:+.1f} mm"),
+                ("droop stop at", f"{st['droop_travel'] * MM:+.1f} mm"),
+                ("rate", f"{st['k'] * 1.e-3:g} N/mm + "
+                         f"{st['k2'] * 1.e-6:g} N/mm^2 d")]))
         notes = raw.get('adjusters', {})
         adjusters = [(title.lower(), [
             ("value", f"{self.adjusters[name]:+.2f} mm"),
@@ -505,6 +514,151 @@ class SuspensionSession(object):
         self.adjusters[name] = float(value)
         self._compliance = None
         return self.run_sweep(keep_previous=True)
+
+    # Editing the model file from the model tree (P22).
+
+    #: The model file blocks behind each model tree item.
+    EDIT_BLOCKS = {
+        ('Bodies', 'chassis'): (('vehicle',),),
+        ('Bodies', 'upright'): (('upright',), ('wheel',)),
+        ('Bodies', 'rocker'): (('rocker',),),
+        ('Bodies', 'rack'): (('rack',),),
+        ('Links', 'pushrod'): (('pushrod',),),
+        ('Links', 'pullrod'): (('pushrod',),),
+        ('Links', 'strut'): (('strut',),),
+        ('Links', 'trailing arm'): (('arm',),),
+        ('Forces', 'spring'): (('spring',),),
+        ('Forces', 'anti-roll bar'): (('arb',),),
+        ('Forces', 'tire'): (('tire',),),
+        ('Forces', 'travel stops'): (('stops',),),
+    }
+    #: The unit of a model file value, by its key (the file stores mm, kg,
+    #: N/mm, N.s/mm).
+    EDIT_UNITS = {
+        'mass': "kg", 'inertia': "kg m^2", 'radius': "mm", 'center': "mm",
+        'free_length_offset': "mm", 'bump_travel': "mm",
+        'droop_travel': "mm", 'k2': "N/mm^2", 'c': "N.s/mm",
+        'knee': "mm/s", 'bump': "N.s/mm", 'rebound': "N.s/mm",
+        'clicks': "clicks", 'bump_clicks': "clicks",
+        'rebound_clicks': "clicks", 'velocity': "mm/s", 'force': "N",
+        'corner_mass': "kg", 'wheelbase': "mm", 'cg_height': "mm",
+        'half_track': "mm", 'ride_height': "mm", 'axis': "unit vector",
+        'spin_axis': "unit vector",
+    }
+
+    def _edit_blocks(self, group, name):
+        raw = self.base_model.raw
+        if 'Links' == group and name in raw.get('links', {}):
+            return (('links', name),)
+        if 'Bodies' == group and name.endswith(' arm') \
+                and name[:-4] in raw.get('arms', {}):
+            return (('arms', name[:-4]),)
+        return self.EDIT_BLOCKS.get((group, name), ())
+
+    def _unit(self, path):
+        key = path[-1] if not isinstance(path[-1], int) else path[-2]
+        if 'k' == key:
+            return {'arb': "N m/rad", 'bushings': "N/mm"}.get(path[0],
+                                                              "N/mm")
+        if 'k_rot' == key:
+            return "N m/rad"
+        value = self._raw_value(path)
+        if isinstance(value, list) and 3 == len(value) \
+                and key not in self.EDIT_UNITS:
+            return "mm"
+        return self.EDIT_UNITS.get(key, "")
+
+    def _raw_value(self, path):
+        node = self.base_model.raw
+        for key in path:
+            node = node[key]
+        return node
+
+    def editable(self, group, name):
+        """The model file values behind a model tree item: ``[(label,
+        path, unit, text)]``, ``path`` the keys into the file; the numbers
+        in the units of the file.  An adjuster item edits its value (mm)."""
+        if 'Adjusters' == group:
+            for key, title in ADJUSTERS:
+                if title.lower() == name and self.has_adjuster(key):
+                    return [("value", ('__adjuster__', key), "mm",
+                             f"{self.adjusters[key]:g}")]
+            return []
+        rows = []
+
+        def walk(node, path):
+            for key, value in node.items():
+                if 'note' == key:
+                    continue
+                here = path + (key,)
+                if isinstance(value, dict):
+                    walk(value, here)
+                elif isinstance(value, (int, float, str, list)) \
+                        and not isinstance(value, bool):
+                    rows.append((" / ".join(str(k) for k in here[
+                        len(block):]), here, self._unit(here),
+                        json.dumps(value)))
+
+        for block in self._edit_blocks(group, name):
+            node = self._raw_value(block)
+            if isinstance(node, dict):
+                walk(node, block)
+        return rows
+
+    def edit_model(self, path, text):
+        """Change a value of the model file (see :meth:`editable`) and
+        re-run the sweep.  The file on disk does not change; see
+        :meth:`save_model`.
+
+        :param text: the new value as JSON (a number, a list, a string)
+        :raises ValueError: for a value of another type or a model the
+            change breaks (the model keeps its last valid state)
+        """
+        if '__adjuster__' == path[0]:
+            return self.set_adjuster(path[1], float(text))
+        old = self._raw_value(path)
+        try:
+            value = json.loads(text)
+        except ValueError:
+            value = json.loads(f"[{text}]") if ',' in str(text) else text
+        if isinstance(old, (int, float)) and not isinstance(old, bool):
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"{'/'.join(map(str, path))} takes a "
+                                 f"number, not {text!r}")
+        elif isinstance(old, list):
+            if not isinstance(value, list) or len(value) != len(old):
+                raise ValueError(f"{'/'.join(map(str, path))} takes a "
+                                 f"list of {len(old)} values")
+        raw = copy.deepcopy(self.base_model.raw)
+        node = raw
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = value
+        model = self.engine.model.CornerModel(raw)
+        # The setup and the K&C rig must still work on the changed model.
+        trial = self.engine.tuning.apply(model, self.setup)
+        trial.set_adjusters(**{name: self.adjusters[name] / MM
+                               for name, _ in ADJUSTERS})
+        check = self.engine.kc.bump_sweep(self.engine.mbs, trial, [0.0])
+        if not check['completed']:
+            raise ValueError(f"the changed model does not assemble: "
+                             f"{check['message']}")
+        self.base_model = model
+        self.model_dirty = True
+        self._reference_readouts = None
+        self._compliance = None
+        return self.run_sweep(keep_previous=True)
+
+    def save_model(self, path=None):
+        """Write the model file (the current one by default); the model
+        is then the file."""
+        path = os.path.abspath(str(path or self.model_path))
+        with open(path, 'w') as fobj:
+            json.dump(self.base_model.raw, fobj, indent=2)
+            fobj.write("\n")
+        self.model_path = path
+        self.model_dirty = False
+        return path
 
     # The setup sheet (P20).
 
@@ -1027,6 +1181,49 @@ class SuspensionSession(object):
             f"modal analysis: {len(modes)} modes, sprung mass "
             f"{sprung_mass:g} kg"))
         return {'completed': True, 'message': '', 'modes': modes}
+
+    def mode_frames(self, sprung_mass, index, frames=24, amplitude=0.025):
+        """The frames of a mode shape of the quarter car for a 3D view.
+
+        The linear corner gives the mode (its frequencies and damping
+        equal the engine modal analysis); the K&C rig poses the corner at
+        the travel of each frame and the chassis moves with the mode.
+
+        :param index: the mode, 0 the ride mode, 1 the wheel hop
+        :param amplitude: the largest motion (m)
+        :return: dict with ``model``, ``poses`` (quarter car poses),
+            ``labels``, ``frequency``, ``damping``, and ``shape``
+        """
+        eng = self.engine
+        model = self.model()
+        lin = eng.ride.LinearCorner(eng.mbs, model, float(sprung_mass))
+        modes = lin.modes()
+        if not 0 <= index < len(modes):
+            raise ValueError(f"no mode {index + 1}")
+        freq, zeta, shape = modes[index]
+        phases = [2.0 * math.pi * k / frames for k in range(frames)]
+        heave = [amplitude * float((shape[0] * np.exp(1j * p)).real)
+                 for p in phases]
+        travel = [model.static_travel + amplitude * float(
+            (shape[1] * np.exp(1j * p)).real) for p in phases]
+        s, c = eng.corner.kc_rig(eng.mbs, model)
+        res = eng.arrays.result_arrays(s.sweep(c.travel,
+                                               [c.z0 + t for t in travel]))
+        poses, labels = [], []
+        for k in range(len(res['values'])):
+            lift = np.array([0.0, 0.0, heave[k]])
+            pose = {'chassis': (lift, np.array([1.0, 0.0, 0.0, 0.0]))}
+            for body, num in c.nums.items():
+                pose[body] = (res['positions'][k, num] + lift,
+                              res['quaternions'][k, num].copy())
+            wheel = pose['upright'][0]
+            pose['road'] = (np.array([wheel[0], wheel[1], 0.0]),
+                            np.array([1.0, 0.0, 0.0, 0.0]))
+            poses.append(pose)
+            labels.append(f"{freq:.2f} Hz, phase "
+                          f"{math.degrees(phases[k]):.0f} deg")
+        return {'model': model, 'poses': poses, 'labels': labels,
+                'frequency': freq, 'damping': zeta, 'shape': shape}
 
     # Target alignment (P11.6).
 

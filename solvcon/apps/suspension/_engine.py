@@ -72,6 +72,8 @@ def load():
             raise EngineUnavailable(
                 f"cannot import solvcon.multibody.suspension.{name}: "
                 f"{exc}") from exc
+    modules['arrays'] = importlib.import_module(
+        'solvcon.multibody.tools.arrays')
     return Engine(mbs, modules)
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

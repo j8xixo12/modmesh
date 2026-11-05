@@ -10,6 +10,7 @@ The engine lives outside solvcon, so these tests skip where it is not
 installed.
 """
 
+import json
 import os
 import tempfile
 import unittest
@@ -718,6 +719,59 @@ class LongitudinalTC(unittest.TestCase):
         self.assertEqual('front', front['traction']['spins'])
         self.assertLess(front['traction']['limit'],
                         out['traction']['limit'])
+
+
+@requires_engine
+class ModelEditTC(unittest.TestCase):
+    """Editing the model file from the model tree, and the 3D frames of
+    the analyses."""
+
+    def test_edit_keep_and_save(self):
+        sess = _session.SuspensionSession(ENGINE)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'corner.json')
+            sess.load_library('macpherson_coilover')
+            sess.save_model(path)
+            rows = {row[0]: row for row in sess.editable('Forces', 'spring')}
+            self.assertEqual(('spring', 'k'), rows['k'][1])
+            self.assertEqual('N/mm', rows['k'][2])
+            self.assertIn('damper / rebound_clicks', rows)
+            self.assertTrue(sess.edit_model(('spring', 'k'), '75'))
+            self.assertEqual(75e3, sess.base_model.spring_k)
+            self.assertTrue(sess.model_dirty)
+            with open(path) as fobj:
+                self.assertEqual(60.0, json.load(fobj)['spring']['k'])
+            # A link point moves the geometry.
+            link = sess.editable('Links', 'lower_front')
+            self.assertEqual(('links', 'lower_front', 'chassis'), link[0][1])
+            sess.edit_model(link[0][1], '[-17.88, 380.0, 245.7529]')
+            self.assertAlmostEqual(0.380, sess.model().hp[
+                'lower_front_inner'][1])
+            for path_bad, text in ((('spring', 'k'), '"soft"'),
+                                   (link[0][1], '[1, 2]')):
+                with self.assertRaises(ValueError):
+                    sess.edit_model(path_bad, text)
+            sess.save_model()
+            self.assertFalse(sess.model_dirty)
+            with open(path) as fobj:
+                data = json.load(fobj)
+            self.assertEqual(75, data['spring']['k'])
+            self.assertEqual(380.0, data['links']['lower_front']['chassis'][1])
+            # An adjuster item edits the adjuster.
+            adj = sess.editable('Adjusters', 'camber shim')
+            sess.edit_model(adj[0][1], '1.5')
+            self.assertEqual(1.5, sess.adjusters['camber_shim'])
+
+    def test_mode_frames(self):
+        sess = _session.SuspensionSession(ENGINE)
+        sess.load_library('macpherson_coilover')
+        out = sess.mode_frames(400.0, 0, frames=12)
+        self.assertEqual(12, len(out['poses']))
+        modes = sess.run_modal(400.0)['modes']
+        self.assertAlmostEqual(modes[0][1], out['frequency'], places=3)
+        heave = [p['chassis'][0][2] for p in out['poses']]
+        self.assertAlmostEqual(0.025, max(np.abs(heave)), delta=2e-3)
+        self.assertIn('road', out['poses'][0])
 
 
 @requires_engine

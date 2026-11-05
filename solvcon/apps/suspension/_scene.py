@@ -618,6 +618,65 @@ def arb_segments(left, right, pose):
     return ends
 
 
+#: The corners of a vehicle and the suffixes of their objects.
+VEHICLE_SUFFIXES = (('front_left', '_fl'), ('front_right', '_fr'),
+                    ('rear_left', '_rl'), ('rear_right', '_rr'))
+
+
+def vehicle_geometries(models):
+    """The :class:`CornerGeometry` of the four corners of a vehicle, in
+    (left, right) pairs per axle: ``models`` maps the corners of
+    ``suspension.car.CORNERS`` to their (placed, mirrored) models."""
+    return [CornerGeometry(models[name], suffix)
+            for name, suffix in VEHICLE_SUFFIXES]
+
+
+def vehicle_view_pose(vpose):
+    """The view pose of a ``suspension.car.vehicle_pose``: the bodies of
+    each corner with its suffix, the chassis frame of each corner (its
+    design position is the global origin), and the bar halves."""
+    pos, quat = vpose['chassis']
+    pos = np.asarray(pos, dtype='float64')
+    rot = rotation(quat)
+    chassis = (pos - rot @ np.asarray(vpose['cg'], dtype='float64'),
+               np.asarray(quat, dtype='float64'))
+    out = {}
+    suffixes = dict(VEHICLE_SUFFIXES)
+    for name, suffix in VEHICLE_SUFFIXES:
+        out['chassis' + suffix] = chassis
+        for body, item in vpose['corners'][name].items():
+            out[body + suffix] = item
+    for axle, halves in vpose.get('arbs', {}).items():
+        out['arb' + suffixes[f'{axle}_left']] = halves[0]
+        out['arb' + suffixes[f'{axle}_right']] = halves[1]
+    return out
+
+
+def vehicle_body_segments(geometries, pose, height=(0.15, 0.75)):
+    """Segment ends (mm) of a box outline of the body over the four
+    corners, moved with the chassis: the roll, pitch, and heave of the
+    sprung mass at a glance."""
+    lo = np.min([g.hp['wheel_center'] for g in geometries], axis=0)
+    hi = np.max([g.hp['wheel_center'] for g in geometries], axis=0)
+    # The hardpoints are in mm; the heights in m.
+    xs = (lo[0] - 600.0, hi[0] + 600.0)
+    ys = (lo[1] + 120.0, hi[1] - 120.0)
+    zs = (height[0] * MM, height[1] * MM)
+    corners = [np.array([x, y, z]) for x in xs for y in ys for z in zs]
+    trans, rot = geometries[0].frames(
+        {'c': pose['chassis' + geometries[0].suffix]})['c']
+    moved = [trans + rot @ c for c in corners]
+    ends = []
+    for i in range(8):
+        for j in range(i + 1, 8):
+            # The 12 edges of the box: corners one coordinate apart.
+            if 1 == sum(a != b for a, b in zip(
+                    ((i >> 2) & 1, (i >> 1) & 1, i & 1),
+                    ((j >> 2) & 1, (j >> 1) & 1, j & 1))):
+                ends += [moved[i], moved[j]]
+    return ends
+
+
 def road_segments(geometry, pose):
     """Return the outline (mm) of the effective road plane under the tire of
     ``geometry`` in a quarter car ``pose`` (tilted by its quaternion, the

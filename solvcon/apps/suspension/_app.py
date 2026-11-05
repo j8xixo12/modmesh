@@ -16,7 +16,7 @@ import os
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (QApplication, QDockWidget, QFileDialog,
-                               QLabel)
+                               QLabel, QMessageBox)
 
 from ...pilot import base
 
@@ -83,6 +83,12 @@ class SuspensionApp(base.PilotFeature):
         self.profile = None
         self.play_timer = QTimer()
         self.play_timer.timeout.connect(self._play_tick)
+        #: The 3D frames of each analysis tab: ``{key: [(label,
+        #: geometries, pose, overlays)]}``, and the one that plays.
+        self.animations = {}
+        self._animating = None
+        self.anim_timer = QTimer()
+        self.anim_timer.timeout.connect(self._anim_tick)
 
     #: The playback period at 1x, in ms per sweep point.
     PLAY_MS = 80
@@ -173,13 +179,17 @@ class SuspensionApp(base.PilotFeature):
                     'vehicle_picked': self.on_vehicle_picked,
                     'handling': self.on_handling,
                     'vehicle_reference': self.on_vehicle_reference,
-                    'longitudinal': self.on_longitudinal}
+                    'longitudinal': self.on_longitudinal,
+                    'frame': self.on_frame, 'animate': self.on_animate,
+                    'mode_shape': self.on_mode_shape}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
         self.tree.library_picked = self.on_library
+        self.tree.save_clicked = self.on_save_model
         self.adjusters = _panel.AdjusterPanel()
         self.adjusters.changed = self.on_adjuster
+        self.adjusters.edited = self.on_property_edited
         self.adjusters.solved = self.on_solve_alignment
         self.analysis = _window.AnalysisPanel(handlers)
         self.analysis.warnings.picked = self.tree.select
@@ -378,12 +388,93 @@ class SuspensionApp(base.PilotFeature):
         self.update_cursor()
 
     def on_selected(self, group, name, props):
-        self.adjusters.show_properties(f"{group}: {name}", props)
+        self._picked = (group, name)
+        self.adjusters.show_properties(f"{group}: {name}", props,
+                                       self.session.editable(group, name))
         links = self._geometry.model.links if self._geometry else {}
         self.selected = (name if name in links
                          or name in ('pushrod', 'pullrod', 'strut', 'spring')
                          else None)
         self.update_cursor()
+
+    # Editing the model from the model tree (P22).
+
+    def ask_save(self, path):
+        """Ask how to keep a model change: ``overwrite`` the model file,
+        keep it ``temporary`` (in this session), or ``cancel`` it.  Tests
+        replace this method."""
+        box = QMessageBox(self._mgr.mainWindow)
+        box.setWindowTitle("Model changed")
+        box.setText(f"Keep the change of the model?\n\nfile: {path}")
+        over = box.addButton("Overwrite the file", QMessageBox.AcceptRole)
+        temp = box.addButton("Keep it temporary", QMessageBox.ActionRole)
+        box.addButton("Cancel the change", QMessageBox.RejectRole)
+        box.setDefaultButton(temp)
+        box.exec()
+        clicked = box.clickedButton()
+        return ('overwrite' if clicked is over
+                else 'temporary' if clicked is temp else 'cancel')
+
+    def on_property_edited(self, path, text):
+        sess = self.session
+        panel = self.adjusters
+        before = (sess.base_model, sess.model_dirty, sess.current,
+                  sess.previous, dict(sess.adjusters))
+        try:
+            sess.edit_model(path, text)
+        except Exception as exc:
+            panel.edit_status.setText(f"not changed: {exc}")
+            self._show_picked()
+            return
+        if '__adjuster__' != path[0]:
+            choice = self.ask_save(sess.model_path)
+            if 'cancel' == choice:
+                (sess.base_model, sess.model_dirty, sess.current,
+                 sess.previous, adjusters) = before
+                sess.adjusters.update(adjusters)
+                panel.edit_status.setText("the change is cancelled")
+                self._geometry = None
+                self._rebuild_view()
+                self.refresh()
+                self._show_picked()
+                return
+            if 'overwrite' == choice:
+                sess.save_model()
+                panel.edit_status.setText(f"saved to {sess.model_path}")
+            else:
+                panel.edit_status.setText(
+                    "kept in this session; Save model... writes it")
+        # The geometry may have moved: rebuild the meshes; the setup sheet
+        # starts from the changed model.
+        self._geometry = None
+        self._rebuild_view()
+        self.refresh()
+        self._show_picked()
+        self.analysis.setup.show_fields(sess.setup_fields())
+
+    def _show_picked(self):
+        picked = getattr(self, '_picked', None)
+        if picked is None:
+            return
+        group, name = picked
+        props = dict(self.session.outline()).get(group, [])
+        rows = dict(props).get(name, [])
+        self.adjusters.show_properties(f"{group}: {name}", rows,
+                                       self.session.editable(group, name))
+        self.tree.dirty_label.setText(
+            "the model has changes not in its file"
+            if self.session.model_dirty else "")
+
+    def on_save_model(self):
+        sess = self.session
+        path, _ = QFileDialog.getSaveFileName(
+            None, "Save the corner model", sess.model_path,
+            "Corner model (*.json)")
+        if path:
+            sess.save_model(path)
+            self.tree.dirty_label.setText("")
+            self.adjusters.edit_status.setText(f"saved to {path}")
+            self.refresh()
 
     def on_library(self, stem):
         self.load_model(os.path.join(self.session.engine.data_dir,
@@ -444,6 +535,9 @@ class SuspensionApp(base.PilotFeature):
             self.analysis.statics.clear()
             self.analysis.ride.clear()
             self.analysis.setup.clear()
+            for key in ('ride', 'modal'):
+                if key in self.animations:
+                    self.set_animation(key, [])
 
     def on_export(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -527,6 +621,9 @@ class SuspensionApp(base.PilotFeature):
         tab.status.setText(before)
         if out['completed']:
             tab.show_time(out)
+            self.set_animation('ride', self._quarter_frames(
+                self.session.model(), out['poses'],
+                [f"t = {t:.2f} s" for t in out['pose_times']]), index=0)
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
@@ -610,6 +707,10 @@ class SuspensionApp(base.PilotFeature):
         if out['completed']:
             ro = out['readouts']
             tab.show_handling(out, ro if ro['completed'] else None)
+            st = out['steady']
+            self.set_animation('vehicle', self._vehicle_frames(
+                [(f"steady turn {a:.2f} g", p)
+                 for a, p in zip(st['a_y'], st['poses'])], st['models']))
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(sess.warnings)
@@ -622,9 +723,114 @@ class SuspensionApp(base.PilotFeature):
                              stem, brake_bias, drive_split, setups))
         if out['completed']:
             tab.show_longitudinal(out)
+            brake = out['brake']['state']
+            drive = out['traction']['state']
+            items = [(f"braking {-a:.2f} g", p)
+                     for a, p in zip(brake['a_x'], brake['poses'])]
+            items += [(f"accelerating {a:.2f} g", p)
+                      for a, p in zip(drive['a_x'], drive['poses'])]
+            self.set_animation('vehicle', self._vehicle_frames(
+                items, brake['models']), index=0)
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
+
+    # The 3D frames of the analyses (P22).
+
+    #: The period of a played frame, in ms.
+    ANIM_MS = 60
+
+    def _bar(self, key):
+        tabs = {'vehicle': self.analysis.vehicle, 'ride': self.analysis.ride,
+                'modal': self.analysis.modal}
+        return tabs[key].replay
+
+    def set_animation(self, key, frames, index=None):
+        """Keep the 3D frames of a tab and show one (the last by
+        default)."""
+        self.anim_timer.stop()
+        self._animating = None
+        self.animations[key] = frames
+        bar = self._bar(key)
+        bar.play.blockSignals(True)
+        bar.play.setChecked(False)
+        bar.play.blockSignals(False)
+        index = len(frames) - 1 if index is None else index
+        bar.set_count(len(frames), max(index, 0))
+        if frames:
+            self.on_frame(key, max(index, 0))
+
+    def on_frame(self, key, index):
+        frames = self.animations.get(key) or []
+        if not frames:
+            return
+        index = max(0, min(int(index), len(frames) - 1))
+        label, geometries, pose, overlays = frames[index]
+        self._show_other(geometries, pose, overlays)
+        self._bar(key).label.setText(f"{label} ({index + 1} of "
+                                     f"{len(frames)})")
+
+    def on_animate(self, key, on):
+        if on and self.animations.get(key):
+            for other in self.animations:
+                if other != key:
+                    bar = self._bar(other)
+                    bar.play.blockSignals(True)
+                    bar.play.setChecked(False)
+                    bar.play.blockSignals(False)
+            self._animating = key
+            self.anim_timer.start(self.ANIM_MS)
+        elif key == self._animating:
+            self.anim_timer.stop()
+            self._animating = None
+
+    def _anim_tick(self):
+        key = self._animating
+        if key is None:
+            self.anim_timer.stop()
+            return
+        bar = self._bar(key)
+        count = len(self.animations.get(key) or [])
+        if count < 2:
+            self.anim_timer.stop()
+            return
+        # Loop: the slider drives the frame.
+        bar.slider.setValue((bar.slider.value() + 1) % count)
+
+    def _vehicle_frames(self, items, models):
+        """Frames of vehicle poses: ``items`` of (label, vehicle pose)."""
+        geometries = _scene.vehicle_geometries(models)
+        frames = []
+        for label, vpose in items:
+            pose = _scene.vehicle_view_pose(vpose)
+            body = _scene.vehicle_body_segments(geometries, pose)
+            frames.append((label, geometries, pose,
+                           {'vehicle_body': body}))
+        return frames
+
+    def _quarter_frames(self, model, poses, labels):
+        geometry = _scene.CornerGeometry(model)
+        return [(label, [geometry], pose, None)
+                for label, pose in zip(labels, poses)]
+
+    def on_mode_shape(self, mass, index):
+        tab = self.analysis.modal
+        try:
+            out = self._busy(tab.status, "posing the mode shape...",
+                             lambda: self.session.mode_frames(mass, index))
+        except Exception as exc:
+            tab.status.setText(f"no mode shape: {exc}")
+            return
+        name = ("ride", "wheel hop")[index] if index < 2 else \
+            f"mode {index + 1}"
+        tab.status.setText(
+            f"{name} mode {out['frequency']:.2f} Hz, damping ratio "
+            f"{out['damping']:.3f}: chassis / travel amplitude "
+            f"{abs(out['shape'][0]):.2f} / {abs(out['shape'][1]):.2f} "
+            f"(25 mm at the largest)")
+        self.set_animation('modal', self._quarter_frames(
+            out['model'], out['poses'], out['labels']), index=0)
+        tab.replay.play.setChecked(True)
 
     def on_vehicle_reference(self):
         tab = self.analysis.vehicle
@@ -641,6 +847,10 @@ class SuspensionApp(base.PilotFeature):
             key = (stem, repr(sorted((setups or {}).items())))
             self._understeer[key] = out['understeer']
             tab.show_steady(out)
+            st = out['steady']
+            self.set_animation('vehicle', self._vehicle_frames(
+                [(f"steady turn {a:.2f} g", p)
+                 for a, p in zip(st['a_y'], st['poses'])], st['models']))
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
@@ -655,6 +865,10 @@ class SuspensionApp(base.PilotFeature):
         if out['completed']:
             self._understeer[key] = out['understeer']
             tab.show_step(out)
+            self.set_animation('vehicle', self._vehicle_frames(
+                [(f"step steer t = {t:.2f} s", p)
+                 for t, p in zip(out['pose_times'], out['poses'])],
+                out['models']), index=0)
         else:
             tab.status.setText(f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
@@ -762,7 +976,11 @@ class SuspensionApp(base.PilotFeature):
         if not (self._showing_run
                 and len(self._showing_run) == len(shown)
                 and all(a is b for a, b in zip(self._showing_run, shown))):
-            self.view.build(geometries, aim=False)
+            # Frame the camera when the number of corners changes (a whole
+            # vehicle after a corner).
+            count = len(self._showing_run) if self._showing_run else \
+                len(self._geometries)
+            self.view.build(geometries, aim=count != len(shown))
             self._showing_run = shown
         self.view.show_pose(geometries, pose, selected=self.selected,
                             overlays=overlays)

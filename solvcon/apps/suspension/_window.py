@@ -605,8 +605,14 @@ class ModalTab(QWidget):
         self.run = _button("Run modal analysis", lambda: handlers['modal'](
             self.mass.value()))
         row.addWidget(self.run)
+        self.animate = _button("Animate the selected mode",
+                               lambda: handlers['mode_shape'](
+                                   self.mass.value(), self.selected_mode()))
+        row.addWidget(self.animate)
         row.addStretch(1)
         layout.addLayout(row)
+        self.replay = ReplayBar('modal', handlers)
+        layout.addWidget(self.replay)
         self.status = QLabel("")
         layout.addWidget(self.status)
         self.table = QTreeWidget()
@@ -620,6 +626,11 @@ class ModalTab(QWidget):
         self.table.clear()
         self.status.setText("")
 
+    def selected_mode(self):
+        """The index of the selected mode row (the first one by default)."""
+        item = self.table.currentItem()
+        return self.table.indexOfTopLevelItem(item) if item else 0
+
     def show_modes(self, modes):
         self.table.clear()
         for name, freq, zeta in modes:
@@ -629,6 +640,43 @@ class ModalTab(QWidget):
     def rows(self):
         return [[self.table.topLevelItem(it).text(col) for col in range(3)]
                 for it in range(self.table.topLevelItemCount())]
+
+
+class ReplayBar(QWidget):
+    """A slider over the frames of an analysis and a Play button: the 3D
+    view shows the frame.
+
+    :param key: the name the handlers get for this bar
+    """
+
+    def __init__(self, key, handlers, parent=None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.play = QPushButton("Play 3D")
+        self.play.setCheckable(True)
+        self.play.setEnabled(False)
+        self.play.toggled.connect(lambda on: handlers['animate'](key, on))
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setEnabled(False)
+        self.slider.valueChanged.connect(
+            lambda v: handlers['frame'](key, v))
+        self.label = QLabel("")
+        self.label.setMinimumWidth(180)
+        row.addWidget(QLabel("3D"))
+        row.addWidget(self.play)
+        row.addWidget(self.slider, 1)
+        row.addWidget(self.label)
+
+    def set_count(self, count, index=0):
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, max(0, count - 1))
+        self.slider.setValue(index)
+        self.slider.setEnabled(count > 1)
+        self.slider.blockSignals(False)
+        self.play.setEnabled(count > 1)
+        if count <= 1:
+            self.play.setChecked(False)
 
 
 class SetupTab(QWidget):
@@ -770,6 +818,8 @@ class RideTab(QWidget):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.status)
+        self.replay = ReplayBar('ride', handlers)
+        layout.addWidget(self.replay)
         plots = QHBoxLayout()
         self.plot = _plots.KCPlot("Body acceleration per road height",
                                   "Frequency [Hz]", "m/s^2 per mm")
@@ -845,6 +895,8 @@ class VehicleTab(QWidget):
         for button in (self.run, self.handling, self.reference):
             row.addWidget(button)
         layout.addLayout(row)
+        self.replay = ReplayBar('vehicle', handlers)
+        layout.addWidget(self.replay)
         box = QGroupBox("Vehicle setup (front / rear axle)")
         self.setup_grid = QGridLayout(box)
         layout.addWidget(box)

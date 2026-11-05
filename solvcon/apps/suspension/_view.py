@@ -56,6 +56,7 @@ OVERLAYS = {
     'roll_center': (0.85, 0.35, 0.10),
     'patch_path': (0.20, 0.60, 0.60),
     'road_profile': (0.35, 0.25, 0.15),
+    'vehicle_body': (0.45, 0.45, 0.50),
 }
 
 #: The mouse mappings of the widget, with the help text of each.
@@ -1101,9 +1102,11 @@ class CornerView(object):
         spring = [end for name in springs if name != selected
                   for end in segments[name]]
         chosen = segments.get(selected, ())
+        # The bar of each axle: the corners come in (left, right) pairs.
         arb = []
-        if 2 == len(geometries) and 'arb' in pose:
-            arb = _scene.arb_segments(geometries[0], geometries[1], pose)
+        for left, right in zip(geometries[0::2], geometries[1::2]):
+            if 'arb' + left.suffix in pose and 'arb' + right.suffix in pose:
+                arb += _scene.arb_segments(left, right, pose)
         road = []
         for geometry in geometries:
             road += _scene.road_segments(geometry, pose)

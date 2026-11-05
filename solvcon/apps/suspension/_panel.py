@@ -13,7 +13,8 @@ and report what the user asks for through callbacks the app sets.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox,
                                QDoubleSpinBox, QFormLayout, QGridLayout,
-                               QGroupBox, QHeaderView, QLabel, QListWidget,
+                               QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+                               QListWidget,
                                QListWidgetItem, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -50,6 +51,13 @@ class ModelTree(QWidget):
         self.file_label.setWordWrap(True)
         self.open_button = QPushButton("Open model...")
         self.open_button.clicked.connect(self._on_open)
+        self.save_clicked = None
+        self.save_button = QPushButton("Save model...")
+        self.save_button.setToolTip("Write the model with its changes: "
+                                    "over its file or to a new one")
+        self.save_button.clicked.connect(
+            lambda: self.save_clicked() if self.save_clicked else None)
+        self.dirty_label = QLabel("")
         self.library = QComboBox()
         self.library.setToolTip("Suspension types in the model library")
         self.library.activated.connect(self._on_library)
@@ -59,7 +67,11 @@ class ModelTree(QWidget):
         layout.addWidget(self.file_label)
         layout.addWidget(QLabel("Library:"))
         layout.addWidget(self.library)
-        layout.addWidget(self.open_button)
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.open_button)
+        buttons.addWidget(self.save_button)
+        layout.addLayout(buttons)
+        layout.addWidget(self.dirty_label)
         layout.addWidget(self.tree, 1)
         self._items = {}
         self._properties = {}
@@ -146,14 +158,22 @@ class AdjusterPanel(QWidget):
         props = QGroupBox("Properties")
         props_layout = QVBoxLayout(props)
         self.title = QLabel("(pick an item in the model tree)")
+        self.title.setWordWrap(True)
+        self.edited = None
         self.table = QTreeWidget()
-        self.table.setColumnCount(2)
-        self.table.setHeaderLabels(["property", "value"])
+        self.table.setColumnCount(3)
+        self.table.setHeaderLabels(["property", "value", "unit"])
+        self.table.setToolTip("Double-click a value of the model file to "
+                              "change it")
+        self.table.itemChanged.connect(self._on_item_changed)
+        self.edit_status = QLabel("")
+        self.edit_status.setWordWrap(True)
         self.table.setRootIsDecorated(False)
         self.table.header().setSectionResizeMode(
             0, QHeaderView.ResizeToContents)
         props_layout.addWidget(self.title)
         props_layout.addWidget(self.table)
+        props_layout.addWidget(self.edit_status)
 
         adjust = QGroupBox("Adjusters")
         form = QFormLayout(adjust)
@@ -219,16 +239,45 @@ class AdjusterPanel(QWidget):
         if self.solved is not None:
             self.solved(self.targets())
 
-    def show_properties(self, title, props):
+    def show_properties(self, title, props, editable=()):
+        """Show the model file values of an item (``editable``: ``(label,
+        path, unit, text)``, the value cell editable) and then its derived
+        properties (``props``: ``(label, text)``, read only)."""
         self.title.setText(title)
+        self.table.blockSignals(True)
         self.table.clear()
+        for label, path, unit, text in editable:
+            item = QTreeWidgetItem([label, text, unit])
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setData(1, Qt.UserRole, path)
+            item.setToolTip(1, "model file value: double-click to change")
+            self.table.addTopLevelItem(item)
         for key, text in props:
-            self.table.addTopLevelItem(QTreeWidgetItem([key, text]))
+            item = QTreeWidgetItem([key, text, ""])
+            item.setForeground(0, Qt.gray)
+            item.setForeground(1, Qt.gray)
+            self.table.addTopLevelItem(item)
+        self.table.blockSignals(False)
 
     def property_rows(self):
         return [(self.table.topLevelItem(it).text(0),
                  self.table.topLevelItem(it).text(1))
                 for it in range(self.table.topLevelItemCount())]
+
+    def edit_property(self, label, text):
+        """Change the value of an editable row as a user does (for
+        scripts)."""
+        for it in range(self.table.topLevelItemCount()):
+            item = self.table.topLevelItem(it)
+            if item.text(0) == label and item.data(1, Qt.UserRole):
+                item.setText(1, text)
+                return
+        raise KeyError(f"no editable property {label!r}")
+
+    def _on_item_changed(self, item, column):
+        path = item.data(1, Qt.UserRole)
+        if 1 == column and path and self.edited is not None:
+            self.edited(tuple(path), item.text(1))
 
     def show_adjusters(self, values, present=None):
         """Show ``values`` (mm) without reporting them as changes; the

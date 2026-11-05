@@ -11,6 +11,7 @@ The engine lives outside solvcon, so these tests skip where it is not
 installed.
 """
 
+import json
 import os
 import tempfile
 import unittest
@@ -785,6 +786,65 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         self.assertIn("the front wheels spin first", text)
         self.assertIn("anti-dive", text)
         self.assertIn("front", vehicle.brake_plot.labels())
+
+    def test_edit_the_model_from_the_tree(self):
+        import shutil
+        feature = self._open()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'corner.json')
+            shutil.copy(os.path.join(feature.session.engine.data_dir,
+                                     'macpherson_coilover.json'), path)
+            feature.load_model(path)
+            feature.tree.select('spring')
+            asked = []
+            feature.ask_save = lambda p: asked.append(p) or 'temporary'
+            feature.adjusters.edit_property('k', '90')
+            self.assertEqual([feature.session.model_path], asked)
+            self.assertEqual(90e3, feature.session.base_model.spring_k)
+            self.assertIn("not in its file", feature.tree.dirty_label.text())
+            feature.ask_save = lambda p: 'overwrite'
+            feature.adjusters.edit_property('free_length_offset', '2')
+            with open(path) as fobj:
+                data = json.load(fobj)
+            self.assertEqual(90, data['spring']['k'])
+            self.assertEqual(2, data['spring']['free_length_offset'])
+            feature.ask_save = lambda p: 'cancel'
+            feature.adjusters.edit_property('k', '120')
+            self.assertEqual(90e3, feature.session.base_model.spring_k)
+            feature.adjusters.edit_property('k', '"x"')
+            self.assertIn("not changed", feature.adjusters.edit_status.text())
+
+    def test_vehicle_and_corner_animations(self):
+        feature = self._open()
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        vehicle.run.click()
+        frames = feature.animations['vehicle']
+        self.assertEqual(5, len(frames))
+        names = feature.view.widget.objectNames()
+        for suffix in ('_fl', '_fr', '_rl', '_rr'):
+            self.assertIn('upright' + suffix, names)
+        vehicle.replay.slider.setValue(0)
+        self.assertIn("0.00 g", vehicle.replay.label.text())
+        # The view follows the frame: the chassis rolls with a_y.
+        vehicle.replay.slider.setValue(4)
+        roll = feature.view.model_of('chassis_fl')
+        self.assertGreater(abs(roll[2, 1]), 1e-3)
+        vehicle.replay.play.setChecked(True)
+        self.assertTrue(feature.anim_timer.isActive())
+        vehicle.replay.play.setChecked(False)
+        self.assertFalse(feature.anim_timer.isActive())
+        feature.on_library('macpherson_coilover')
+        modal = feature.analysis.modal
+        modal.run.click()
+        modal.animate.click()
+        self.assertEqual(24, len(feature.animations['modal']))
+        self.assertTrue(feature.anim_timer.isActive())
+        modal.replay.play.setChecked(False)
+        # Back on the sweep, the corner is shown again.
+        feature.update_cursor(0)
+        self.assertIn('upright', feature.view.widget.objectNames())
 
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
