@@ -18,12 +18,14 @@ from . import obsrefl
 from . import shocktube
 from . import suspension
 from . import modelview
+from . import golf_r
 
 __all__ = [
     'obsrefl',
     'shocktube',
     'suspension',
     'modelview',
+    'golf_r',
 ]
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
