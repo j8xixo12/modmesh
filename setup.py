@@ -70,6 +70,7 @@ def main():
             'solvcon.agent.draw',
             'solvcon.agent.window',
             'solvcon.apps',
+            'solvcon.apps.modelview',
             'solvcon.apps.obsrefl',
             'solvcon.apps.shocktube',
             'solvcon.benchmark',

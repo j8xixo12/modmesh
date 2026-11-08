@@ -17,11 +17,13 @@ pilot toggle so the problem still runs headlessly.
 from . import obsrefl
 from . import shocktube
 from . import suspension
+from . import modelview
 
 __all__ = [
     'obsrefl',
     'shocktube',
     'suspension',
+    'modelview',
 ]
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
