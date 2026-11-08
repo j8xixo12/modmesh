@@ -30,6 +30,7 @@ set(SOLVCON_PILOT_PYMODHEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RCameraController.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RDrawable.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RMeshFrame.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/visual/RSurface.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RField.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RColormap.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RScalarField.hpp
@@ -86,6 +87,7 @@ set(SOLVCON_PILOT_PYMODSOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RCameraController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RDrawable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RMeshFrame.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/visual/RSurface.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RField.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RColormap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/visual/RScalarField.cpp
@@ -140,6 +142,8 @@ set(SOLVCON_PILOT_SHADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/texture.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/texture.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lit.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lit_texture.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lit_texture.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lit.frag
     CACHE FILEPATH "" FORCE)
 

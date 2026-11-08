@@ -89,7 +89,7 @@ public:
     float opacity() const { return m_opacity; }
     /// True below full opacity: drawn after the opaque drawables, without
     /// depth writes.
-    bool translucent() const { return m_opacity < 1.0f; }
+    virtual bool translucent() const { return m_opacity < 1.0f; }
 
     /// Create the device resources if they do not exist yet. Idempotent.
     void prepare(
@@ -113,10 +113,11 @@ protected:
 
     RDrawable() = default;
 
-    /// std140 layout of the shared uniform block: mat4 mvp + vec4 color +
-    /// vec4 lightDir. The trailing light direction is used only by the lit
-    /// material; the other shaders declare a shorter block over the same buffer.
-    static constexpr int UBUF_SIZE = 64 + 16 + 16;
+    /**
+     * std140 layout: mat4 mvp, vec4 color, vec4 lightDir, mat4 normalModel.
+     * Unlit shaders use only the leading members of the shared buffer.
+     */
+    static constexpr int UBUF_SIZE = 64 + 16 + 16 + 64;
 
     /// The shader variant this drawable renders with.
     virtual RMaterial::Kind materialKind() const = 0;

@@ -49,6 +49,10 @@ RMaterial::RMaterial(Kind kind)
         m_vert = loadShader(QStringLiteral(":/solvcon/pilot/shaders/scalar.vert.qsb"));
         m_frag = loadShader(QStringLiteral(":/solvcon/pilot/shaders/scalar.frag.qsb"));
         break;
+    case Kind::LitTextured:
+        m_vert = loadShader(QStringLiteral(":/solvcon/pilot/shaders/lit_texture.vert.qsb"));
+        m_frag = loadShader(QStringLiteral(":/solvcon/pilot/shaders/lit_texture.frag.qsb"));
+        break;
     }
 }
 

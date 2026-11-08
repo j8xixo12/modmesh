@@ -8,13 +8,13 @@ layout(std140, binding = 0) uniform buf
     mat4 mvp;
     vec4 color;
     vec4 lightDir; // xyz: world-space direction toward the light.
+    mat4 normalModel;
 } ubuf;
 
 layout(location = 0) out vec3 v_normal;
 
 void main()
 {
-    // The model transform is identity, so the normal is already world-space.
-    v_normal = normal;
+    v_normal = mat3(ubuf.normalModel) * normal;
     gl_Position = ubuf.mvp * vec4(position, 1.0);
 }

@@ -7,6 +7,7 @@ layout(std140, binding = 0) uniform buf
     mat4 mvp;
     vec4 color;
     vec4 lightDir;
+    mat4 normalModel;
 } ubuf;
 
 layout(location = 0) out vec4 fragColor;
