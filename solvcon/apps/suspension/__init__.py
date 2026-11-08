@@ -18,7 +18,9 @@ __all__, __getattr__, __dir__ = pilot.lazy_exports(__name__, {
     '_app': ['SuspensionApp'],
     '_engine': ['Engine', 'EngineUnavailable', 'load'],
     '_plots': ['KCPlot'],
-    '_scene': ['CornerGeometry'],
+    '_scene': ['CornerGeometry', 'vehicle_geometries', 'vehicle_view_pose',
+               'vehicle_body_segments'],
+    '_view': ['CornerView'],
     '_session': ['SuspensionSession', 'SweepResult', 'QuarterCarRun'],
 }, ungated=('_engine', '_scene', '_session'))
 
