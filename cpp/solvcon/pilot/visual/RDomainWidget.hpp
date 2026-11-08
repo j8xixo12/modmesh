@@ -42,6 +42,7 @@ namespace solvcon
 {
 
 class RScalarField;
+class RSurface;
 
 /**
  * Per-cell geometric quality metrics, over the SimpleArray mesh path.
@@ -115,6 +116,29 @@ public:
     // named, lit surface; the setters drive it by name (an unknown name is a
     // no-op).
     void addObject(std::string const & name, std::shared_ptr<StaticMesh> const & mesh);
+
+    /// Register a lit triangle surface without requiring volume topology.
+    void addSurfaceObject(
+        std::string const & name,
+        SimpleArray<float> const & positions,
+        SimpleArray<float> const & normals,
+        SimpleArray<uint32_t> const & indices);
+    void removeObject(std::string const & name);
+    void clearObjects();
+
+    /// Add a lit base-color texture from encoded PNG/JPEG image bytes.
+    void addTexturedSurfaceObject(
+        std::string const & name,
+        SimpleArray<float> const & positions,
+        SimpleArray<float> const & normals,
+        SimpleArray<float> const & texcoords,
+        SimpleArray<uint32_t> const & indices,
+        std::string const & image_data,
+        std::string const & alpha_mode = "OPAQUE",
+        float alpha_cutoff = 0.5f,
+        float alpha_factor = 1.0f,
+        int wrap_s = 10497,
+        int wrap_t = 10497);
 
     /**
      * Set the model transform of a named object: scale by (sx, sy, sz), then
@@ -502,9 +526,10 @@ private:
     RDrawable * m_clip = nullptr; ///< The clipped surface drawable.
     RDrawable * m_slice = nullptr; ///< The slice cross-section outline.
 
-    /// A named scene object: its drawable (owned by the scene), its mesh
-    /// (null for line segments), and its untransformed bounds, kept so a
-    /// transform can re-extend the framing box.
+    /**
+     * A named drawable, optional StaticMesh, and untransformed bounds.
+     * Direct surfaces and line segments do not require a StaticMesh.
+     */
     struct ObjectEntry
     {
         RDrawable * drawable = nullptr;
@@ -512,6 +537,8 @@ private:
         QVector3D lo;
         QVector3D hi;
     }; /* end struct ObjectEntry */
+    void rebuildObjectBounds();
+    void installSurface(std::string const & name, std::unique_ptr<RSurface> surface);
     std::map<std::string, ObjectEntry> m_objects;
     std::vector<float> m_ticks_x; ///< Cube-axes tick coordinates per axis.
     std::vector<float> m_ticks_y;

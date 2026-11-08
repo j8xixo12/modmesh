@@ -12,10 +12,13 @@
 #include <solvcon/pilot/visual/RNormals.hpp>
 #include <solvcon/pilot/visual/RScalarField.hpp>
 #include <solvcon/pilot/visual/RSegments.hpp>
+#include <solvcon/pilot/visual/RSurface.hpp>
 
 #include <solvcon/math/math.hpp>
 
 #include <QGestureEvent>
+#include <QBuffer>
+#include <QImageReader>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
@@ -375,6 +378,119 @@ void RDomainWidget::addObject(
         m_scene.extendBoundingBox(lo, hi);
     }
     m_scene.fitCameraToScene(viewportAspect());
+    update();
+}
+
+void RDomainWidget::addSurfaceObject(
+    std::string const & name,
+    SimpleArray<float> const & positions,
+    SimpleArray<float> const & normals,
+    SimpleArray<uint32_t> const & indices)
+{
+    installSurface(name, std::make_unique<RSurface>(positions, normals, indices));
+}
+
+void RDomainWidget::addTexturedSurfaceObject(
+    std::string const & name,
+    SimpleArray<float> const & positions,
+    SimpleArray<float> const & normals,
+    SimpleArray<float> const & texcoords,
+    SimpleArray<uint32_t> const & indices,
+    std::string const & image_data,
+    std::string const & alpha_mode,
+    float alpha_cutoff,
+    float alpha_factor,
+    int wrap_s,
+    int wrap_t)
+{
+    int const mode = alpha_mode == "OPAQUE" ? 0 : alpha_mode == "MASK" ? 1
+                                              : alpha_mode == "BLEND"  ? 2
+                                                                       : -1;
+    if (image_data.size() > 64 * 1024 * 1024)
+    {
+        throw std::invalid_argument("RDomainWidget: encoded image exceeds 64 MiB");
+    }
+    QBuffer buffer;
+    buffer.setData(QByteArray(image_data.data(), static_cast<qsizetype>(image_data.size())));
+    buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer);
+    QSize const size = reader.size();
+    if (!size.isValid() || size.width() > 8192 || size.height() > 8192)
+    {
+        throw std::invalid_argument("RDomainWidget: invalid or oversized image");
+    }
+    QImage const image = reader.read();
+    installSurface(name, std::make_unique<RSurface>(positions, normals, texcoords, indices, image, mode, alpha_cutoff, alpha_factor, wrap_s, wrap_t));
+}
+
+void RDomainWidget::installSurface(std::string const & name, std::unique_ptr<RSurface> surface)
+{
+    removeObject(name);
+    if (!surface->hasGeometry())
+    {
+        return;
+    }
+    surface->setName(name);
+    QVector3D const lo = surface->bboxLo();
+    QVector3D const hi = surface->bboxHi();
+    RDrawable * const drawable = surface.get();
+    m_scene.addDrawable(std::move(surface));
+    m_objects[name] = ObjectEntry{drawable, nullptr, lo, hi};
+    m_scene.setDimension(3);
+    m_scene.extendBoundingBox(lo, hi);
+    m_scene.fitCameraToScene(viewportAspect());
+    update();
+}
+
+void RDomainWidget::rebuildObjectBounds()
+{
+    m_scene.resetBoundingBox();
+    if (m_mesh && m_mesh->nnode() > 0)
+    {
+        QVector3D lo;
+        QVector3D hi;
+        mesh_bounds(*m_mesh, lo, hi);
+        m_scene.extendBoundingBox(lo, hi);
+    }
+    if (m_has_field_bbox)
+    {
+        m_scene.extendBoundingBox(m_field_lo, m_field_hi);
+    }
+    for (auto const & entry : m_objects)
+    {
+        auto const & obj = entry.second;
+        for (int i = 0; i < 8; ++i)
+        {
+            QVector3D const corner((i & 1) ? obj.hi.x() : obj.lo.x(),
+                                   (i & 2) ? obj.hi.y() : obj.lo.y(),
+                                   (i & 4) ? obj.hi.z() : obj.lo.z());
+            QVector3D const mapped = obj.drawable->model().map(corner);
+            m_scene.extendBoundingBox(mapped, mapped);
+        }
+    }
+}
+
+void RDomainWidget::removeObject(std::string const & name)
+{
+    auto const it = m_objects.find(name);
+    if (it == m_objects.end())
+    {
+        return;
+    }
+    m_scene.removeDrawable(it->second.drawable);
+    m_objects.erase(it);
+    rebuildObjectBounds();
+    update();
+}
+
+void RDomainWidget::clearObjects()
+{
+    for (auto const & entry : m_objects)
+    {
+        m_scene.removeDrawable(entry.second.drawable);
+    }
+    m_objects.clear();
+    rebuildObjectBounds();
     update();
 }
 

@@ -227,6 +227,12 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRDomainWidget
                 py::arg("mesh"),
                 "Register a mesh as a named, lit surface object in the scene.")
             .def(
+                "addSurfaceObject", &wrapped_type::addSurfaceObject, py::arg("name"), py::arg("positions"), py::arg("normals"), py::arg("indices"))
+            .def("removeObject", &wrapped_type::removeObject, py::arg("name"))
+            .def("clearObjects", &wrapped_type::clearObjects)
+            .def(
+                "addTexturedSurfaceObject", &wrapped_type::addTexturedSurfaceObject, py::arg("name"), py::arg("positions"), py::arg("normals"), py::arg("texcoords"), py::arg("indices"), py::arg("image_data"), py::arg("alpha_mode") = "OPAQUE", py::arg("alpha_cutoff") = 0.5f, py::arg("alpha_factor") = 1.0f, py::arg("wrap_s") = 10497, py::arg("wrap_t") = 10497)
+            .def(
                 "setObjectTransform",
                 &wrapped_type::setObjectTransform,
                 py::arg("name"),
