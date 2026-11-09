@@ -11,6 +11,7 @@
 """
 
 import math
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,90 +24,16 @@ from solvcon.apps.golf_r import vehicle_candidate as vc
 from solvcon.multibody.suspension import axle, car, kc
 from solvcon.multibody.suspension.model import CornerModel, damper_table
 
-SUSPENSIONS = """[HEADER]
-VERSION=1
-[BASIC]
-WHEELBASE=2.60
-CG_LOCATION=0.60
-[ARB]
-FRONT=30000
-REAR=15000
-[FRONT]
-TYPE=STRUT
-BASEY=-0.24
-TRACK=1.56
-HUB_MASS=40
-STRUT_CAR=0.25, 0.55, -0.04
-STRUT_TYRE=0.07, -0.14, 0.01
-WBCAR_BOTTOM_FRONT=0.40, -0.11, 0.10
-WBCAR_BOTTOM_REAR=0.41, -0.12, -0.27
-WBTYRE_BOTTOM=0.07, -0.14, 0.01
-WBCAR_STEER=0.50, -0.03, -0.19
-WBTYRE_STEER=0.10, -0.04, -0.13
-TOE_OUT=0.0005
-STATIC_CAMBER=-2.0
-SPRING_RATE=50000
-PROGRESSIVE_SPRING_RATE=0
-BUMP_STOP_RATE=60000
-BUMPSTOP_UP=0.08
-BUMPSTOP_DN=0.06
-DAMP_BUMP=5000
-DAMP_FAST_BUMP=2500
-DAMP_FAST_BUMPTHRESHOLD=0.10
-DAMP_REBOUND=7000
-DAMP_FAST_REBOUND=4000
-DAMP_FAST_REBOUNDTHRESHOLD=0.12
-[REAR]
-TYPE=DWB
-BASEY=-0.26
-TRACK=1.53
-HUB_MASS=35
-WBCAR_TOP_FRONT=0.35, 0.09, 0.22
-WBCAR_TOP_REAR=0.40, 0.09, 0.03
-WBCAR_BOTTOM_FRONT=0.48, -0.12, 0.30
-WBCAR_BOTTOM_REAR=0.58, -0.12, -0.12
-WBTYRE_TOP=0.07, 0.10, -0.01
-WBTYRE_BOTTOM=0.05, -0.13, 0.02
-WBCAR_STEER=0.58, -0.10, -0.11
-WBTYRE_STEER=0.07, -0.10, -0.10
-TOE_OUT=0.0002
-STATIC_CAMBER=-1.5
-SPRING_RATE=40000
-BUMP_STOP_RATE=40000
-BUMPSTOP_UP=0.08
-BUMPSTOP_DN=-0.00
-DAMP_BUMP=4000
-DAMP_FAST_BUMP=3500
-DAMP_FAST_BUMPTHRESHOLD=0.10
-DAMP_REBOUND=4500
-DAMP_FAST_REBOUND=4000
-DAMP_FAST_REBOUNDTHRESHOLD=0.12
-"""
-
-TYRE = """RADIUS=0.32
-RATE=250000
-DAMP=400
-FZ0=3000
-LS_EXPY=0.8
-LS_EXPX=0.85
-DY_REF=1.1
-DX_REF=1.15
-FRICTION_LIMIT_ANGLE=8.0
-FALLOFF_LEVEL=0.86
-CX_MULT=1.0
-RELAXATION_LENGTH=0.3
-"""
+#: A synthetic car in the AC file layout (see its README).
+FIXTURE = Path(__file__).resolve().parents[2] / 'data' / 'multibody' \
+    / 'ac_synthetic'
 
 
 def write_fixture(path):
-    """Write the synthetic AC files into ``path``."""
-    path = Path(path)
-    (path / 'suspensions.ini').write_text(SUSPENSIONS)
-    (path / 'tyres.ini').write_text(
-        '[HEADER]\nVERSION=10\n[FRONT]\n' + TYRE + '[REAR]\n' + TYRE)
-    (path / 'car.ini').write_text(
-        '[BASIC]\nTOTALMASS=1500\nINERTIA=1.6,1.4,4.3\n')
-    (path / 'brakes.ini').write_text('[DATA]\nFRONT_SHARE=0.70\n')
+    """Copy the synthetic AC files into ``path``."""
+    for name in ('suspensions.ini', 'tyres.ini', 'car.ini', 'brakes.ini',
+                 'drivetrain.ini'):
+        shutil.copy(FIXTURE / name, Path(path) / name)
 
 
 class CandidateTest(unittest.TestCase):

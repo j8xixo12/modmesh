@@ -220,6 +220,9 @@ class SuspensionApp(base.PilotFeature):
                     'setup': self.on_setup,
                     'setup_action': self.on_setup_action,
                     'vehicle_picked': self.on_vehicle_picked,
+                    'vehicle_open': self.on_vehicle_open,
+                    'vehicle_import': self.on_vehicle_import,
+                    'vehicle_input_changed': self.on_vehicle_input_changed,
                     'handling': self.on_handling,
                     'vehicle_reference': self.on_vehicle_reference,
                     'longitudinal': self.on_longitudinal,
@@ -840,6 +843,7 @@ class SuspensionApp(base.PilotFeature):
         self._refresh_tree()
         tab = self.analysis.vehicle
         tab.show_vehicle_setup(self.session.vehicle_setup(stem))
+        tab.apply_defaults(self.session.vehicle_defaults(stem))
         self._show_vehicle_sources()
         # Nothing of the last vehicle stays: its results, its reference, and
         # its 3D frames.
@@ -847,6 +851,79 @@ class SuspensionApp(base.PilotFeature):
         self.set_animation('vehicle', [])
         self.analysis.overview.clear(_overview.VEHICLE_GROUPS,
                                      f"vehicle {stem}: run the analyses")
+
+    def on_vehicle_open(self):
+        path, _ = QFileDialog.getOpenFileName(
+            None, "Open a vehicle file", "", "Vehicle (*.json)")
+        if path:
+            self.open_vehicle_file(path)
+
+    def open_vehicle_file(self, path):
+        """List a vehicle file in the Vehicle tab and pick it."""
+        try:
+            stem = self.session.add_vehicle_file(path)
+        except (OSError, ValueError) as exc:
+            self._vehicle_failed(f"the vehicle is not opened: {exc}")
+            return None
+        self._pick_vehicle(stem)
+        return stem
+
+    def on_vehicle_import(self):
+        folder = QFileDialog.getExistingDirectory(
+            None, "The data folder of an Assetto Corsa car")
+        if not folder:
+            return
+        default = os.path.join(os.path.dirname(os.path.abspath(folder)),
+                               "solvcon_vehicle.json")
+        target, _ = QFileDialog.getSaveFileName(
+            None, "Save the converted vehicle as", default,
+            "Vehicle (*.json)")
+        if target:
+            self.import_ac_vehicle(folder, target)
+
+    def import_ac_vehicle(self, folder, target):
+        """Convert Assetto Corsa car data to vehicle and corner files
+        (:meth:`SuspensionSession.import_ac_vehicle`) and pick the
+        vehicle."""
+        tab = self.analysis.vehicle
+        try:
+            stem = self._busy(tab.status, "converting the AC data",
+                              lambda: self.session.import_ac_vehicle(
+                                  folder, target))
+        except Exception as exc:
+            self._vehicle_failed(f"the AC data are not converted: {exc}")
+            return None
+        self._pick_vehicle(stem)
+        tab.status.setText(
+            f"converted to {stem}; double-click an axle in the model tree "
+            "to open its corner")
+        return stem
+
+    def _vehicle_failed(self, message):
+        sess = self.session
+        sess.warnings = [sess._entry('error', 'vehicle', None, message)]
+        self.analysis.vehicle.status.setText(message)
+        self.analysis.warnings.show_entries(sess.warnings)
+
+    def _pick_vehicle(self, stem):
+        tab = self.analysis.vehicle
+        tab.show_vehicles(self.session.vehicles())
+        index = tab.vehicle.findData(stem)
+        tab.vehicle.blockSignals(True)
+        tab.vehicle.setCurrentIndex(index)
+        tab.vehicle.blockSignals(False)
+        self.on_vehicle_picked(stem)
+
+    def on_vehicle_input_changed(self):
+        """A run input (speed, rack, brake bias, drive) changed: the
+        vehicle results shown are of the old inputs."""
+        self.cancel_vehicle_job()
+        self.analysis.vehicle.clear_results(
+            "an input changed: run the analysis again")
+        self.set_animation('vehicle', [])
+        self.analysis.overview.clear(
+            _overview.VEHICLE_GROUPS,
+            "a vehicle input changed: run the analyses again")
 
     def _show_vehicle_sources(self):
         tab = self.analysis.vehicle

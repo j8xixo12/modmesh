@@ -876,10 +876,11 @@ class RideTab(QWidget):
 
 
 class VehicleTab(QWidget):
-    """The full vehicle of a bundled vehicle file: steady-state cornering
-    (roll gradient, lateral load transfer, LLTD, understeer gradient)
-    against the roll center model, and a step steer at speed against the
-    linear bicycle model."""
+    """The full vehicle of a vehicle file (a bundled one, an opened one, or
+    converted Assetto Corsa data): steady-state cornering (roll gradient,
+    lateral load transfer, LLTD, understeer gradient) against the roll
+    center model, the handling diagram, a step steer at speed against the
+    linear bicycle model, and braking and traction."""
 
     def __init__(self, handlers, parent=None):
         super().__init__(parent)
@@ -891,6 +892,18 @@ class VehicleTab(QWidget):
         row.addWidget(self.vehicle, 1)
         self.vehicle.currentIndexChanged.connect(
             lambda _: handlers['vehicle_picked'](self.vehicle.currentData()))
+        self.open_vehicle = _button("Open vehicle...",
+                                    lambda: handlers['vehicle_open']())
+        self.import_ac = _button("Import AC car...",
+                                 lambda: handlers['vehicle_import']())
+        self.import_ac.setToolTip(
+            "Convert the data folder of an Assetto Corsa car (car.ini, "
+            "suspensions.ini, tyres.ini, brakes.ini, drivetrain.ini) to a "
+            "vehicle file and two corner files; the car then runs every "
+            "analysis here, and a double-click on an axle in the model tree "
+            "opens its corner for the K&C analyses.")
+        row.addWidget(self.open_vehicle)
+        row.addWidget(self.import_ac)
         self.run = _button("Steady-state cornering",
                            lambda: handlers['vehicle'](
                                self.vehicle.currentData(), self.setups()))
@@ -910,6 +923,10 @@ class VehicleTab(QWidget):
         self.sources = QLabel("")
         self.sources.setWordWrap(True)
         layout.addWidget(self.sources)
+        #: The data assumptions of the vehicle file (converted data).
+        self.notes = QLabel("")
+        self.notes.setWordWrap(True)
+        layout.addWidget(self.notes)
         self.replay = ReplayBar('vehicle', handlers)
         layout.addWidget(self.replay)
         box = QGroupBox("Vehicle setup (front / rear axle)")
@@ -946,6 +963,12 @@ class VehicleTab(QWidget):
         row.addWidget(self.longitudinal)
         row.addStretch(1)
         layout.addLayout(row)
+        # A run input change: the results shown are of the old inputs.
+        for spin in (self.speed, self.rack, self.bias):
+            spin.valueChanged.connect(
+                lambda _: handlers['vehicle_input_changed']())
+        self.drive.currentIndexChanged.connect(
+            lambda _: handlers['vehicle_input_changed']())
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -994,6 +1017,31 @@ class VehicleTab(QWidget):
                        self.longitudinal):
             button.setEnabled(not on)
         self.cancel.setVisible(on)
+
+    def apply_defaults(self, defaults):
+        """Show the run inputs and the notes of a vehicle file
+        (:meth:`SuspensionSession.vehicle_defaults`): its brake bias, its
+        drive split as the first drive layout, and its assumptions."""
+        widgets = (self.bias, self.drive)
+        for widget in widgets:
+            widget.blockSignals(True)
+        if defaults.get('brake_bias') is not None:
+            self.bias.setValue(100.0 * float(defaults['brake_bias']))
+        self.drive.clear()
+        split = defaults.get('drive_split')
+        if split is not None:
+            self.drive.addItem(f"from the vehicle file ({100.0 * split:.0f} "
+                               "% front)", float(split))
+        for label, value in _session.SuspensionSession.DRIVES:
+            self.drive.addItem(label, value)
+        self.drive.setCurrentIndex(0)
+        for widget in widgets:
+            widget.blockSignals(False)
+        notes = defaults.get('assumptions') or []
+        self.notes.setText(
+            f"Data assumptions ({len(notes)}): hover for the list."
+            if notes else "")
+        self.notes.setToolTip("\n".join(f"- {n}" for n in notes))
 
     def show_sources(self, sources, tree_name, dirty):
         """Say which axle uses the corner of the model tree (``sources``

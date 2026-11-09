@@ -8,7 +8,8 @@ Run a long session analysis in a child process, so the window stays live.
 The engine holds the Python thread while it solves, so a thread does not
 help.  A :class:`Job` starts a fresh process (the ``spawn`` start method:
 no Qt state is copied), rebuilds the session from the state the window
-has (the model file, the unsaved model edits, the setup, the adjusters),
+has (the model file, the unsaved model edits, the setup, the adjusters,
+the vehicle edits and the added vehicle files),
 runs the session calls, and sends back their results and warnings.
 :meth:`Job.cancel` ends the process.
 """
@@ -33,6 +34,10 @@ def session_state(session):
         'model_dirty': session.model_dirty,
         'setup': dict(session.setup),
         'adjusters': dict(session.adjusters),
+        'vehicle_raw': session.vehicle_raw,
+        'vehicle_dirty': set(session.vehicle_dirty),
+        'extra_vehicles': list(session.extra_vehicles),
+        'vehicle_stem': session.vehicle_stem,
     }
 
 
@@ -46,6 +51,11 @@ def _rebuild(state):
     sess.model_dirty = state['model_dirty']
     sess.setup = dict(state['setup'])
     sess.adjusters = dict(state['adjusters'])
+    # The vehicle edits kept in the session and the added vehicle files.
+    sess.vehicle_raw = state['vehicle_raw']
+    sess.vehicle_dirty = set(state['vehicle_dirty'])
+    sess.extra_vehicles = list(state['extra_vehicles'])
+    sess.vehicle_stem = state['vehicle_stem']
     return sess
 
 

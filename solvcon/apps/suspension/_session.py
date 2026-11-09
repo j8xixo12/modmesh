@@ -284,6 +284,9 @@ class SuspensionSession(object):
         self.vehicle_stem = None
         self.vehicle_raw = {}
         self.vehicle_dirty = set()
+        #: Vehicle files beside the bundled ones (absolute paths; the path
+        #: is the stem), for example converted Assetto Corsa data.
+        self.extra_vehicles = []
         self.load(model_path or os.path.join(engine.data_dir,
                                              self.DEFAULT_MODEL))
 
@@ -1632,14 +1635,87 @@ class SuspensionSession(object):
     # The full vehicle (P18).
 
     def vehicles(self):
-        """``[(stem, name)]`` of the bundled vehicle files."""
+        """``[(stem, name)]`` of the bundled vehicle files and the added
+        ones (see :meth:`add_vehicle_file`)."""
         folder = self.engine.car.DATA_DIR
         out = []
         for fname in sorted(os.listdir(folder)):
             if fname.endswith('.json'):
                 with open(os.path.join(folder, fname)) as fobj:
                     out.append((fname[:-5], json.load(fobj)['name']))
+        for path in self.extra_vehicles:
+            name = self.vehicle_data(path).get('name', os.path.basename(path))
+            out.append((path, f"{name} ({os.path.basename(path)})"))
         return out
+
+    def add_vehicle_file(self, path):
+        """List a vehicle file beside the bundled ones.
+
+        :return: its stem (the absolute path)
+        :raises ValueError: when the file does not make a vehicle
+        """
+        path = os.path.abspath(str(path))
+        with open(path) as fobj:
+            data = json.load(fobj)
+        try:
+            self.engine.car.VehicleModel(data, base_dir=os.path.dirname(path))
+        except Exception as exc:
+            raise ValueError(f"{path} is not a vehicle file: {exc}") from exc
+        if path not in self.extra_vehicles:
+            self.extra_vehicles.append(path)
+        return path
+
+    def import_ac_vehicle(self, folder, target):
+        """Convert Assetto Corsa car data (the ``data`` folder of a car:
+        ``car.ini``, ``suspensions.ini``, ``tyres.ini``, ...) to a vehicle
+        file ``target`` with its two corner files beside it
+        (``<name>_front.json``, ``<name>_rear.json``), and list it.
+
+        The conversion is :func:`solvcon.apps.golf_r.vehicle_candidate.
+        vehicle_data`; its assumptions go into the files.  The brake
+        share of ``brakes.ini`` and the drive split of ``drivetrain.ini``
+        become the ``brake_bias`` and ``drive_split`` of the vehicle.
+
+        :return: the stem of the vehicle (the absolute path of ``target``)
+        """
+        from solvcon.apps.golf_r import bicycle, vehicle_candidate
+
+        data = vehicle_candidate.vehicle_data(folder)
+        shares = bicycle.shares(folder)
+        target = Path(target)
+        if '.json' != target.suffix:
+            target = target.with_suffix('.json')
+
+        def plain(value):
+            if hasattr(value, 'tolist'):
+                return value.tolist()
+            raise TypeError(f"not JSON: {type(value).__name__}")
+
+        for axle_name in ("front", "rear"):
+            corner = target.parent / f"{target.stem}_{axle_name}.json"
+            with open(corner, 'w') as fobj:
+                json.dump(data[axle_name], fobj, indent=2, default=plain)
+                fobj.write("\n")
+            data[axle_name] = corner.name
+        data['source'] = (f"{data.get('source', '')}; converted from "
+                          f"{os.path.abspath(str(folder))}")
+        if 'front_brake_share' in shares:
+            data['brake_bias'] = shares['front_brake_share']
+        if 'front_drive_share' in shares:
+            data['drive_split'] = shares['front_drive_share']
+        with open(target, 'w') as fobj:
+            json.dump(data, fobj, indent=2, default=plain)
+            fobj.write("\n")
+        return self.add_vehicle_file(target)
+
+    def vehicle_defaults(self, stem):
+        """The run inputs and notes a vehicle file gives: ``brake_bias``
+        and ``drive_split`` (front shares, None when absent) and
+        ``assumptions`` (the list of its data assumptions)."""
+        data = self.vehicle_data(stem)
+        return {'brake_bias': data.get('brake_bias'),
+                'drive_split': data.get('drive_split'),
+                'assumptions': list(data.get('assumptions', []))}
 
     #: The vehicle setup fields of the Vehicle tab (per axle).
     VEHICLE_FIELDS = ('spring_rate', 'arb_rate', 'ride_height',

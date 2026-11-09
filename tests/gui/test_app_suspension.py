@@ -1141,6 +1141,79 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         self.assertFalse(feature.vehicle_job_running())
         self.assertEqual([], vehicle.yaw_plot.labels())
 
+    def test_imported_ac_car_runs_every_analysis(self):
+        # The synthetic Assetto Corsa car of the test data: converted to a
+        # vehicle file with two corner files, then every vehicle analysis,
+        # its corners in the tree, and the result reset on input changes.
+        fixture = os.path.join(os.path.dirname(__file__), os.pardir, 'data',
+                               'multibody', 'ac_synthetic')
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        target = os.path.join(tmp.name, 'synthetic.json')
+        feature = self._open()
+        feature.ask_save = lambda p: 'temporary'
+        stem = feature.import_ac_vehicle(fixture, target)
+        self.assertEqual(os.path.abspath(target), stem)
+        for name in ('synthetic.json', 'synthetic_front.json',
+                     'synthetic_rear.json'):
+            self.assertTrue(os.path.exists(os.path.join(tmp.name, name)))
+        vehicle = feature.analysis.vehicle
+        self.assertEqual(stem, vehicle.vehicle.currentData())
+        # The brake share and the drive split of the AC files, and the
+        # assumptions of the conversion.
+        self.assertEqual(70.0, vehicle.bias.value())
+        self.assertEqual(0.6, vehicle.drive.currentData())
+        self.assertIn("Data assumptions", vehicle.notes.text())
+        self.assertIn("tyre", vehicle.notes.toolTip())
+        # Every analysis runs on it.
+        vehicle.run.click()
+        self.assertTrue(vehicle.roll_plot.labels())
+        vehicle.handling.click()
+        self.assertTrue(vehicle.handling_plot.labels())
+        vehicle.longitudinal.click()
+        self.assertTrue(vehicle.brake_plot.labels())
+        vehicle.step.click()
+        self.assertTrue(vehicle.yaw_plot.labels())
+        self.assertTrue(feature.animations['vehicle'])
+        self.assertTrue(feature.analysis.overview.values)
+        # A run input change drops the results of the old inputs.
+        vehicle.speed.setValue(vehicle.speed.value() + 10.0)
+        for plot in (vehicle.roll_plot, vehicle.handling_plot,
+                     vehicle.brake_plot, vehicle.yaw_plot):
+            self.assertEqual([], plot.labels())
+        self.assertEqual([], feature.animations['vehicle'])
+        self.assertIn("input changed", vehicle.status.text())
+        for key in ('roll_gradient', 'yaw_gain', 'brake_limit'):
+            self.assertNotIn(key, feature.analysis.overview.values)
+        # The corner of an axle opens in the tree for the K&C analyses.
+        feature.tree.activate('front axle')
+        sess = feature.session
+        self.assertTrue(sess.model_path.endswith('synthetic_front.json'))
+        self.assertIn("front axle: the model tree", vehicle.sources.text())
+        # Another window opens the converted file.
+        other = self._open()
+        self.assertEqual(stem, other.open_vehicle_file(target))
+        self.assertEqual(stem, other.analysis.vehicle.vehicle.currentData())
+        self.assertIsNone(other.open_vehicle_file(
+            os.path.join(fixture, 'README.md')))
+        self.assertIn("not opened", other.analysis.vehicle.status.text())
+
+    def test_background_run_sees_the_vehicle_edits(self):
+        feature = self._open()
+        feature.ask_save = lambda p: 'temporary'
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'road_car'))
+        feature.tree.select('vehicle data')
+        feature.adjusters.edit_property('sprung_mass', '1700')
+        vehicle.run.click()
+        in_place = vehicle.status.text()
+        feature.background = True
+        vehicle.clear_results()
+        vehicle.run.click()
+        feature.wait_vehicle_job()
+        self.assertEqual(in_place, vehicle.status.text())
+
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()
         tab = feature.analysis.dynamics
