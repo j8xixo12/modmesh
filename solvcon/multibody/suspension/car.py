@@ -127,7 +127,24 @@ class VehicleModel(object):
             stiff = [stiff, stiff]
         # N/deg in the file.
         self.cornering_stiffness = [float(c) / DEG for c in stiff]
-        self.mu = float(tire.get("mu", 1.0))
+        # One friction, or one per axle (front, rear); ``mu`` is their mean.
+        mu = tire.get("mu", 1.0)
+        self.mu_axle = [float(m) for m in (
+            mu if np.ndim(mu) else [mu, mu])]
+        if len(self.mu_axle) != 2:
+            raise ValueError("tire mu is one value or (front, rear)")
+        self.mu = float(np.mean(self.mu_axle))
+        # The dynamic (engine) tire options of :func:`build`: the reference
+        # loads (N, front, rear) where C_alpha and mu hold, with the
+        # exponent n of C_alpha ~ F_z^n and mu ~ F_z^(n-1); the brush
+        # side force; the relaxation length (m).  None: no load
+        # sensitivity.
+        ref = tire.get("reference_load")
+        self.reference_load = None if ref is None else [
+            float(v) for v in (ref if np.ndim(ref) else [ref, ref])]
+        self.load_exponent = float(tire.get("load_exponent", 1.0))
+        self.brush = bool(tire.get("brush", False))
+        self.relaxation_length = float(tire.get("relaxation_length", 0.0))
         # The nonlinear tire of the handling diagram: the shape factor C of
         # the Magic Formula side force and the load sensitivities of the
         # cornering stiffness and the friction (per unit load change).
@@ -190,6 +207,17 @@ def _corner_mass(model):
     return _unsprung_mass(model) + model.rocker_mass + model.rack_mass
 
 
+def _stop_lengths(mbs, model):
+    """The spring-line lengths of the stops of a corner model, cached on
+    the model (a mirrored corner has the same lengths)."""
+    key = (model.stops["bump_travel"], model.stops["droop_travel"])
+    cached = getattr(model, "_stop_cache", None)
+    if cached is None or cached[0] != key:
+        cached = (key, vehicle.travel_stop_lengths(mbs, model))
+        model._stop_cache = cached
+    return cached[1]
+
+
 def corner_models(mbs, vm, gravity=9.81):
     """``{corner: model}`` of the four preloaded corner models."""
     front = _preloaded(mbs, vm.front, vm.corner_sprung_mass(True), gravity)
@@ -244,6 +272,17 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
                         if front and steer_func else None), gravity=field,
             velocity=vel)
         out["corners"][name] = c
+        if model.stops is not None:
+            # The bump and droop stops on the spring line, as in the
+            # quarter car (:func:`vehicle.quarter_car`).
+            lengths = _stop_lengths(mbs, model)
+            st = model.stops
+            stop = mbs.create_length_stop(
+                c.body(c.spring_body), chassis, list(c.spring_points[0]),
+                list(c.spring_points[1]), min_length=lengths[0],
+                max_length=lengths[1], k=st["k"], k2=st["k2"], c=st["c"])
+            s.Add(stop)
+            out.setdefault("stops", {})[name] = stop
         masses = {"upright": model.upright_mass, "rocker": model.rocker_mass,
                   "rack": model.rack_mass}
         masses.update({"arm_" + arm: spec["mass"]
@@ -254,12 +293,18 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
                   + model.upright_mass + model.rocker_mass + model.rack_mass
                   + sum(a["mass"] for a in model.arms.values())) * gravity
         deflection = weight / model.tire_k
-        stiff = vm.cornering_stiffness[0 if front else 1]
+        axle_index = 0 if front else 1
+        stiff = vm.cornering_stiffness[axle_index]
+        fz0 = (0.0 if vm.reference_load is None
+               else vm.reference_load[axle_index])
         tire = mbs.create_tire(ground, c.upright, list(model.spin_axis),
                                model.wheel_radius + deflection, model.tire_k,
                                model.tire_c,
                                c_alpha=stiff if with_slip else 0.0,
-                               mu=vm.mu, road_z=0.0)
+                               mu=vm.mu_axle[axle_index], road_z=0.0,
+                               fz0=fz0, load_exponent=vm.load_exponent,
+                               brush=vm.brush,
+                               relaxation_length=vm.relaxation_length)
         s.Add(tire)
         out["tires"][name] = tire
     for axle_name in ("front", "rear"):
@@ -572,11 +617,15 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
     carry the lateral slip force F = -C_alpha alpha (limited to mu F_z).
 
     :return: dict with ``time``, ``yaw_rate`` (rad/s), ``speed`` (m/s),
-        ``lateral_acceleration`` (m/s^2, V r), ``steer`` (rad, the mean
-        front and rear wheel angle to the chassis, + to the left), and the
-        means over the last 0.5 s: ``steady`` dict of the same keys;
-        ``poses`` (:func:`vehicle_pose`, following the car) every
-        ``pose_dt`` seconds at ``pose_times``, and the corner ``models``
+        ``lateral_acceleration`` (m/s^2, the chassis acceleration normal
+        to its heading in the road plane; V r only in a steady turn),
+        ``sideslip`` (rad, the chassis velocity angle to its heading),
+        ``normal_force`` (N, (n, 4) in :data:`CORNERS` order), ``steer``
+        (rad, the mean front and rear wheel angle to the chassis, + to the
+        left), and the means over the last 0.5 s: ``steady`` dict of the
+        same keys; ``poses`` (:func:`vehicle_pose`, following the car)
+        every ``pose_dt`` seconds at ``pose_times``, the corner ``models``,
+        and the :func:`plausibility` ``checks`` with ``plausible``
     """
     times = [0.0, start, start + ramp, duration + 1.0]
     values = [0.0, 0.0, float(rack), float(rack)]
@@ -587,11 +636,17 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
     s.set_integrator("rk45")
     s.set_tolerances(1e-7, 1e-10)
     from .metrics import rot
-    rec = {"time": [], "yaw_rate": [], "speed": [], "steer": []}
+    rec = {"time": [], "yaw_rate": [], "speed": [], "steer": [],
+           "sideslip": [], "normal_force": [], "velocity": [],
+           "lateral": []}
     poses, pose_times = [], []
     every = max(1, int(round(pose_dt / dt)))
+    tires = [h["tires"][name] for name in CORNERS]
     for step in range(int(round(duration / dt))):
         s.solve()
+        if vm.relaxation_length > 0.0:
+            for tire in tires:
+                mbs.commit_tire(tire)
         if 0 == step % every:
             poses.append(vehicle_pose(s, h, follow=True))
             pose_times.append(s.get_sim_time())
@@ -607,19 +662,97 @@ def step_steer(mbs, vm, speed, rack, start=0.5, ramp=0.2, duration=3.0,
             fwd = rot(quat[c.nums["upright"]]) @ np.array([1.0, 0.0, 0.0])
             angles.append(math.remainder(math.atan2(fwd[1], fwd[0]) - yaw,
                                          2.0 * math.pi))
+        lateral = np.array([-math.sin(yaw), math.cos(yaw)])
+        v_xy = np.asarray(vel[1][:2], dtype="float64")
         rec["time"].append(s.get_sim_time())
         rec["yaw_rate"].append(float(omega[1][2]))
-        rec["speed"].append(float(np.linalg.norm(vel[1][:2])))
+        rec["speed"].append(float(np.linalg.norm(v_xy)))
         rec["steer"].append([0.5 * (angles[0] + angles[1]),
                              0.5 * (angles[2] + angles[3])])
+        rec["sideslip"].append(math.atan2(float(v_xy @ lateral),
+                                          float(v_xy @ heading[:2])))
+        rec["normal_force"].append(
+            [float(mbs.get_tire_state(h["tires"][name])["normal_force"])
+             for name in CORNERS])
+        rec["velocity"].append(v_xy)
+        rec["lateral"].append(lateral)
     out = {key: np.array(val) for key, val in rec.items()}
-    out["lateral_acceleration"] = out["speed"] * out["yaw_rate"]
+    # The chassis acceleration (central differences of the velocity)
+    # normal to the heading.
+    accel = np.gradient(out.pop("velocity"), out["time"], axis=0)
+    out["lateral_acceleration"] = np.einsum("ij,ij->i", accel,
+                                            out.pop("lateral"))
     out["poses"] = poses
     out["pose_times"] = np.array(pose_times)
     out["models"] = h["models"]
     tail = out["time"] >= out["time"][-1] - 0.5
     out["steady"] = {key: np.mean(out[key][tail], axis=0) for key in
-                     ("yaw_rate", "speed", "lateral_acceleration", "steer")}
+                     ("yaw_rate", "speed", "lateral_acceleration", "steer",
+                      "sideslip")}
+    out["checks"] = plausibility(out, vm.mu, gravity)
+    out["plausible"] = not any("invalid" == c["level"]
+                               for c in out["checks"])
+    return out
+
+
+#: The sideslip (rad) past which a run has left the linear handling range:
+#: a car beyond 10 deg is spinning (Milliken, RCVD, Ch. 5, beta-method).
+SPIN_SIDESLIP = math.radians(10.0)
+#: The steady yaw rate spread (std / |mean| over the last 0.5 s) of a
+#: settled run.
+SETTLED_SPREAD = 0.05
+
+
+def plausibility(run, mu, gravity=9.81):
+    """Physical checks of a dynamic vehicle run.
+
+    * ``invalid``: a non-finite state; a sideslip past
+      :data:`SPIN_SIDESLIP` (the car spun); a lateral acceleration above
+      1.1 mu g (more than the tires can give).
+    * ``warning``: a wheel off the road (F_z = 0); a yaw rate that has not
+      settled in the last 0.5 s (the ``steady`` values are not steady).
+
+    :param run: a run of :func:`step_steer`
+    :type run: dict
+    :param mu: the tire friction coefficient
+    :type mu: float
+    :return: the checks, each a dict with ``level`` (``invalid`` or
+        ``warning``), ``key``, and ``message``
+    :rtype: list
+    """
+    out = []
+
+    def add(level, key, message):
+        out.append({"level": level, "key": key, "message": message})
+
+    for key in ("yaw_rate", "speed", "lateral_acceleration", "sideslip"):
+        if not np.isfinite(run[key]).all():
+            add("invalid", "finite", f"{key} is not finite: the run "
+                "diverged")
+            return out
+    beta = float(np.max(np.abs(run["sideslip"])))
+    if beta > SPIN_SIDESLIP:
+        add("invalid", "spin", f"the car spun: sideslip "
+            f"{math.degrees(beta):.1f} deg > "
+            f"{math.degrees(SPIN_SIDESLIP):.0f} deg")
+    ay = float(np.max(np.abs(run["lateral_acceleration"])))
+    if ay > 1.1 * mu * gravity:
+        add("invalid", "friction", f"lateral acceleration {ay / gravity:.2f}"
+            f" g exceeds the tire friction {mu:.2f} (by more than 10 %)")
+    fz = np.asarray(run["normal_force"])
+    if fz.size:
+        lifted = [CORNERS[k] for k in range(fz.shape[1])
+                  if np.min(fz[:, k]) <= 0.0]
+        if lifted:
+            add("warning", "lift", "wheel off the road: "
+                + ", ".join(lifted))
+    tail = run["time"] >= run["time"][-1] - 0.5
+    r = np.asarray(run["yaw_rate"])[tail]
+    if abs(np.mean(r)) > 1e-6 and \
+            np.std(r) > SETTLED_SPREAD * abs(np.mean(r)):
+        add("warning", "settle", "the yaw rate has not settled in the last "
+            f"0.5 s (spread {np.std(r) / abs(np.mean(r)) * 100:.0f} %); "
+            "the steady values are not steady")
     return out
 
 
