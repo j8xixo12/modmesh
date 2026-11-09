@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                                QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 
+from . import _glossary
+from . import _overview
 from . import _panel
 from . import _plots
 from . import _session
@@ -750,7 +752,10 @@ class SetupTab(QWidget):
             spin.valueChanged.connect(
                 lambda v, k=key: self._handlers['setup'](k, v,
                                                          self.mass.value()))
-            self.grid.addWidget(QLabel(label), it, 0)
+            name = QLabel(label)
+            for widget in (name, spin):
+                widget.setToolTip(_glossary.FIELD_HELP.get(key, ""))
+            self.grid.addWidget(name, it, 0)
             self.grid.addWidget(spin, it, 1)
             self.grid.addWidget(QLabel(ref_text), it, 2)
             self.spins[key] = spin
@@ -895,9 +900,16 @@ class VehicleTab(QWidget):
                                     self.setups()))
         self.reference = _button("Use as reference",
                                  lambda: handlers['vehicle_reference']())
-        for button in (self.run, self.handling, self.reference):
+        self.cancel = _button("Cancel", lambda: handlers['vehicle_cancel']())
+        self.cancel.setVisible(False)
+        for button in (self.run, self.handling, self.reference,
+                       self.cancel):
             row.addWidget(button)
         layout.addLayout(row)
+        #: Which corner model each axle uses: the model tree or a file.
+        self.sources = QLabel("")
+        self.sources.setWordWrap(True)
+        layout.addWidget(self.sources)
         self.replay = ReplayBar('vehicle', handlers)
         layout.addWidget(self.replay)
         box = QGroupBox("Vehicle setup (front / rear axle)")
@@ -976,6 +988,28 @@ class VehicleTab(QWidget):
                            (0, 64), 1, 0),
     }
 
+    def set_running(self, on):
+        """A background run: the run buttons wait, Cancel shows."""
+        for button in (self.run, self.handling, self.step,
+                       self.longitudinal):
+            button.setEnabled(not on)
+        self.cancel.setVisible(on)
+
+    def show_sources(self, sources, tree_name, dirty):
+        """Say which axle uses the corner of the model tree (``sources``
+        of :meth:`SuspensionSession.vehicle_sources`)."""
+        parts = []
+        for axle_name in ("front", "rear"):
+            if sources.get(axle_name):
+                edits = ", unsaved edits" if dirty else ""
+                parts.append(f"{axle_name} axle: the model tree "
+                             f"({tree_name}{edits})")
+            else:
+                parts.append(f"{axle_name} axle: its library file")
+        self.sources.setText("Corner models: " + "; ".join(parts) + ".  "
+                             "Open an axle's corner file in the tree to "
+                             "edit it for this vehicle.")
+
     def show_vehicle_setup(self, setups):
         """Lay out the setup fields of each axle (``{"front": {...},
         "rear": {...}}``)."""
@@ -988,7 +1022,9 @@ class VehicleTab(QWidget):
             self.setup_grid.addWidget(QLabel(text), 0, col)
         for it, key in enumerate(keys, start=1):
             label, unit, (lo, hi), step, decimals = self.SETUP_FIELDS[key]
-            self.setup_grid.addWidget(QLabel(label), it, 0)
+            name = QLabel(label)
+            name.setToolTip(_glossary.FIELD_HELP.get(key, ""))
+            self.setup_grid.addWidget(name, it, 0)
             for col, axle_name in enumerate(("front", "rear"), start=1):
                 if key not in setups.get(axle_name, {}):
                     continue
@@ -1002,6 +1038,7 @@ class VehicleTab(QWidget):
                     spin = _spin(lo, hi, value, unit, decimals=decimals,
                                  step=step)
                 # A changed setup makes the shown results stale.
+                spin.setToolTip(_glossary.FIELD_HELP.get(key, ""))
                 spin.valueChanged.connect(
                     lambda _: self._handlers['vehicle_setup_changed']())
                 self.setup_grid.addWidget(spin, it, col)
@@ -1166,7 +1203,12 @@ class VehicleTab(QWidget):
             f"{out['delta'] * deg:+.3f} deg: steady yaw rate "
             f"{st['yaw_rate'] * deg:+.3f} deg/s (bicycle model "
             f"{out['bicycle_yaw_rate'] * deg:+.3f}), lateral acceleration "
-            f"{st['lateral_acceleration'] / 9.81:+.3f} g.")
+            f"{st['lateral_acceleration'] / 9.81:+.3f} g, sideslip "
+            f"{st['sideslip'] * deg:+.2f} deg."
+            + ("" if out['plausible'] else
+               "  NOT PLAUSIBLE: " + "; ".join(
+                   c['message'] for c in out['checks']
+                   if 'invalid' == c['level'])))
 
 
 class HardpointTab(QWidget):
@@ -1488,7 +1530,9 @@ class AnalysisPanel(QWidget):
         self.ride = RideTab(handlers)
         self.vehicle = VehicleTab(handlers)
         self.setup = SetupTab(handlers)
-        for title, tab in (("Setup", self.setup),
+        self.overview = _overview.OverviewTab(handlers)
+        for title, tab in (("Overview", self.overview),
+                           ("Setup", self.setup),
                            ("Sweep", self.sweep), ("Statics", self.statics),
                            ("Dynamics", self.dynamics),
                            ("Modal", self.modal), ("Ride", self.ride),
@@ -1497,8 +1541,8 @@ class AnalysisPanel(QWidget):
                            ("Batch", self.batch),
                            ("Profile", self.profile)):
             self.tabs.addTab(scrollable(tab), title)
-        # The sweep plots first; the setup sheet is one tab to the left.
-        self.tabs.setCurrentIndex(1)
+        # The overview (the workflow and the KPIs) first.
+        self.tabs.setCurrentIndex(0)
         box = QGroupBox("Warnings")
         self.warnings = _panel.WarningList()
         QVBoxLayout(box).addWidget(self.warnings)

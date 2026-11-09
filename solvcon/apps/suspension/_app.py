@@ -12,8 +12,10 @@ reads every result from a :class:`~._session.SuspensionSession` and moves
 the 3D pose and the plot cursors together.
 """
 
+import copy
 import math
 import os
+import time
 
 import numpy as np
 from PySide6.QtCore import QTimer, Qt
@@ -23,6 +25,9 @@ from PySide6.QtWidgets import (QApplication, QDockWidget, QFileDialog,
 from ...pilot import base
 
 from . import _engine
+from . import _glossary
+from . import _jobs
+from . import _overview
 from . import _panel
 from . import _plots
 from . import _scene
@@ -106,6 +111,15 @@ class SuspensionApp(base.PilotFeature):
         self._run_geometry = None
         #: The understeer gradient of each vehicle the Vehicle tab solved.
         self._understeer = {}
+        #: Run the vehicle analyses in a child process (the window stays
+        #: live and a run can be cancelled); False runs them in place.
+        self.background = True
+        self._job = None
+        self._job_done = None
+        self._job_text = ""
+        self._job_started = 0.0
+        self.job_timer = QTimer()
+        self.job_timer.timeout.connect(self._job_tick)
         #: The geometries the view shows instead of the sweep, or False.
         self._showing_run = False
         self.overlays = set()
@@ -211,12 +225,16 @@ class SuspensionApp(base.PilotFeature):
                     'longitudinal': self.on_longitudinal,
                     'frame': self.on_frame, 'animate': self.on_animate,
                     'mode_shape': self.on_mode_shape,
-                    'vehicle_setup_changed': self.on_vehicle_setup_changed}
+                    'vehicle_setup_changed': self.on_vehicle_setup_changed,
+                    'vehicle_cancel': self.cancel_vehicle_job,
+                    'overview_update': self.on_overview_update,
+                    'overview_targets': self.on_overview_targets}
         self.tree = _panel.ModelTree()
         self.tree.selected = self.on_selected
         self.tree.open_clicked = self.on_open_model
         self.tree.library_picked = self.on_library
         self.tree.save_clicked = self.on_save_model
+        self.tree.activated = self.on_tree_activated
         self.adjusters = _panel.AdjusterPanel()
         self.adjusters.changed = self.on_adjuster
         self.adjusters.edited = self.on_property_edited
@@ -249,6 +267,7 @@ class SuspensionApp(base.PilotFeature):
     def _on_closed(self):
         self.timer.stop()
         self.play_timer.stop()
+        self.cancel_vehicle_job()
         if self.run is not None:
             self.run.cancel()
         for dock in self.docks:
@@ -446,7 +465,77 @@ class SuspensionApp(base.PilotFeature):
         return ('overwrite' if clicked is over
                 else 'temporary' if clicked is temp else 'cancel')
 
+    def _refresh_tree(self):
+        if self.tree is None:
+            return
+        picked = self.tree.current_name()
+        self.tree.show_outline(self.session.outline(),
+                               self.session.model_path)
+        if picked is not None:
+            self.tree.select(picked)
+
+    def ask_switch(self, path):
+        """Ask what to do with the unsaved edits of the tree model before
+        another corner opens: ``save`` them to the file, ``discard`` them,
+        or ``cancel``.  Tests replace this method."""
+        box = QMessageBox(self._mgr.mainWindow)
+        box.setWindowTitle("Unsaved model edits")
+        box.setText(f"The model in the tree has edits not in its file.\n\n"
+                    f"file: {path}")
+        save = box.addButton("Save them to the file", QMessageBox.AcceptRole)
+        drop = box.addButton("Discard them", QMessageBox.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(save)
+        box.exec()
+        clicked = box.clickedButton()
+        return ('save' if clicked is save
+                else 'discard' if clicked is drop else 'cancel')
+
+    def on_tree_activated(self, group, name):
+        """A double-click on an axle of the Vehicle group opens its corner
+        file in the tree."""
+        if 'Vehicle' != group or name not in ('front axle', 'rear axle'):
+            return
+        sess = self.session
+        path = sess.axle_corner_path(name.split()[0])
+        if path is None or path == sess.model_path:
+            return
+        if sess.model_dirty:
+            choice = self.ask_switch(sess.model_path)
+            if 'cancel' == choice:
+                return
+            if 'save' == choice:
+                sess.save_model()
+        self.load_model(path)
+
+    def _on_vehicle_edited(self, path, text):
+        sess = self.session
+        panel = self.adjusters
+        before = (copy.deepcopy(sess.vehicle_raw), set(sess.vehicle_dirty))
+        try:
+            sess.edit_model(path, text)
+        except Exception as exc:
+            panel.edit_status.setText(f"not changed: {exc}")
+            self._show_picked()
+            return
+        choice = self.ask_save(str(sess._vehicle_file(sess.vehicle_stem)))
+        if 'cancel' == choice:
+            sess.vehicle_raw, sess.vehicle_dirty = before
+            panel.edit_status.setText("the change is cancelled")
+        elif 'overwrite' == choice:
+            panel.edit_status.setText(f"saved to {sess.save_vehicle()}")
+        else:
+            panel.edit_status.setText("kept in this session")
+        # The vehicle results are of the old vehicle data.
+        self.on_vehicle_setup_changed()
+        self.analysis.vehicle.status.setText(
+            "the vehicle changed: run the analysis again")
+        self._refresh_tree()
+        self._show_picked()
+
     def on_property_edited(self, path, text):
+        if '__vehicle__' == path[0]:
+            return self._on_vehicle_edited(path, text)
         sess = self.session
         panel = self.adjusters
         before = (sess.base_model, sess.model_dirty, sess.current,
@@ -561,6 +650,7 @@ class SuspensionApp(base.PilotFeature):
         results of the corner model (each was computed for the model before
         the change); ``note`` tells the user why."""
         self.timer.stop()
+        self.cancel_vehicle_job(note)
         if self.run is not None and not self.run.finished:
             self.run.cancel()
         self.run = None
@@ -580,6 +670,18 @@ class SuspensionApp(base.PilotFeature):
             for tab in (self.analysis.dynamics, self.analysis.modal,
                         self.analysis.statics, self.analysis.ride):
                 tab.status.setText(note)
+            self.analysis.overview.clear(
+                _overview.CORNER_GROUPS + _overview.VEHICLE_GROUPS, note)
+            # The vehicle uses the corner of the tree for its axle: its
+            # results are of the old corner too.
+            vehicle = self.analysis.vehicle
+            vehicle.clear_results(note)
+            if 'vehicle' in self.animations:
+                self.set_animation('vehicle', [])
+            if vehicle.vehicle.count():
+                vehicle.show_vehicle_setup(self.session.vehicle_setup(
+                    vehicle.vehicle.currentData()))
+                self._show_vehicle_sources()
 
     def on_export(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -733,62 +835,207 @@ class SuspensionApp(base.PilotFeature):
     def on_vehicle_picked(self, stem):
         if stem is None:
             return
+        self.cancel_vehicle_job()
+        self.session.set_vehicle(stem)
+        self._refresh_tree()
         tab = self.analysis.vehicle
         tab.show_vehicle_setup(self.session.vehicle_setup(stem))
+        self._show_vehicle_sources()
         # Nothing of the last vehicle stays: its results, its reference, and
         # its 3D frames.
         tab.clear_results(keep_reference=False)
         self.set_animation('vehicle', [])
+        self.analysis.overview.clear(_overview.VEHICLE_GROUPS,
+                                     f"vehicle {stem}: run the analyses")
+
+    def _show_vehicle_sources(self):
+        tab = self.analysis.vehicle
+        stem = tab.vehicle.currentData()
+        if stem is None:
+            return
+        sess = self.session
+        tab.show_sources(sess.vehicle_sources(stem),
+                         os.path.basename(sess.model_path),
+                         sess.model_dirty)
 
     def on_vehicle_setup_changed(self):
         """A vehicle setup field changed: the shown results are of the old
         setup, so they go (the reference stays: it is a chosen setup)."""
+        self.cancel_vehicle_job()
         tab = self.analysis.vehicle
         tab.clear_results("the setup changed: run the analysis again")
         self.set_animation('vehicle', [])
+        self.analysis.overview.clear(
+            _overview.VEHICLE_GROUPS,
+            "the vehicle setup changed: run the analyses again")
 
     def on_handling(self, stem, setups):
-        tab = self.analysis.vehicle
-        sess = self.session
-
-        def run():
-            out = sess.run_handling(stem, setups)
+        def done(outs):
+            out = outs[0]
+            tab = self.analysis.vehicle
             if out['completed']:
-                out['readouts'] = sess.vehicle_readouts(stem, setups)
-            return out
+                out['readouts'] = outs[1]
+                ro = out['readouts']
+                tab.show_handling(out, ro if ro['completed'] else None)
+                self._vehicle_kpis('handling', out)
+                st = out['steady']
+                self.set_animation('vehicle', self._vehicle_frames(
+                    [(f"steady turn {a:.2f} g", p)
+                     for a, p in zip(st['a_y'], st['poses'])],
+                    st['models']))
+            else:
+                tab.status.setText(f"failed: {out['message']}")
 
-        out = self._busy(tab.status, "solving the handling diagram...",
-                         run)
-        if out['completed']:
-            ro = out['readouts']
-            tab.show_handling(out, ro if ro['completed'] else None)
-            st = out['steady']
-            self.set_animation('vehicle', self._vehicle_frames(
-                [(f"steady turn {a:.2f} g", p)
-                 for a, p in zip(st['a_y'], st['poses'])], st['models']))
-        else:
-            tab.status.setText(f"failed: {out['message']}")
-        self.analysis.warnings.show_entries(sess.warnings)
+        self._vehicle_run("solving the handling diagram...",
+                          [('run_handling', (stem, setups), {}),
+                           ('vehicle_readouts', (stem, setups), {})], done)
 
     def on_longitudinal(self, stem, brake_bias, drive_split, setups=None):
-        tab = self.analysis.vehicle
-        out = self._busy(tab.status, "solving the braking and the traction "
-                                     "states...",
-                         lambda: self.session.run_longitudinal(
-                             stem, brake_bias, drive_split, setups))
-        if out['completed']:
-            tab.show_longitudinal(out)
-            brake = out['brake']['state']
-            drive = out['traction']['state']
-            items = [(f"braking {-a:.2f} g", p)
-                     for a, p in zip(brake['a_x'], brake['poses'])]
-            items += [(f"accelerating {a:.2f} g", p)
-                      for a, p in zip(drive['a_x'], drive['poses'])]
-            self.set_animation('vehicle', self._vehicle_frames(
-                items, brake['models']), index=0)
+        def done(outs):
+            out = outs[0]
+            tab = self.analysis.vehicle
+            if out['completed']:
+                tab.show_longitudinal(out)
+                self._vehicle_kpis('longitudinal', out)
+                brake = out['brake']['state']
+                drive = out['traction']['state']
+                items = [(f"braking {-a:.2f} g", p)
+                         for a, p in zip(brake['a_x'], brake['poses'])]
+                items += [(f"accelerating {a:.2f} g", p)
+                          for a, p in zip(drive['a_x'], drive['poses'])]
+                self.set_animation('vehicle', self._vehicle_frames(
+                    items, brake['models']), index=0)
+            else:
+                tab.status.setText(f"failed: {out['message']}")
+
+        self._vehicle_run("solving the braking and the traction states...",
+                          [('run_longitudinal',
+                            (stem, brake_bias, drive_split, setups), {})],
+                          done)
+
+    # The overview KPIs.
+
+    def _vehicle_kpis(self, kind, out):
+        overview = self.analysis.overview
+        overview.set_values(self.session.vehicle_kpis(kind, out))
+        if 'step' == kind and not out.get('plausible', True):
+            overview.set_note('handling', "step steer NOT PLAUSIBLE: " + "; "
+                              .join(c['message'] for c in out['checks']
+                                    if 'invalid' == c['level']))
         else:
-            tab.status.setText(f"failed: {out['message']}")
+            overview.set_note('handling' if kind != 'longitudinal'
+                              else 'braking', "")
+
+    def on_overview_update(self, mass):
+        overview = self.analysis.overview
+        out = self._busy(overview.group_notes['ride'],
+                         "computing the corner KPIs...",
+                         lambda: self.session.corner_kpis(mass))
+        if out['completed']:
+            overview.clear(_overview.CORNER_GROUPS)
+            overview.set_values(out['values'])
+            name = os.path.basename(self.session.model_path)
+            overview.set_note('ride', f"{name} at {mass:.0f} kg per corner")
+        else:
+            overview.clear(_overview.CORNER_GROUPS,
+                           f"failed: {out['message']}")
         self.analysis.warnings.show_entries(self.session.warnings)
+
+    def on_overview_targets(self):
+        path, _ = QFileDialog.getOpenFileName(
+            None, "Load KPI targets", "", "JSON (*.json)")
+        if path:
+            self.load_targets(path)
+
+    def load_targets(self, path):
+        try:
+            targets = _glossary.load_targets(path)
+        except (OSError, ValueError) as exc:
+            self.session.warnings.append(self.session._entry(
+                'error', 'overview', None, f"targets not loaded: {exc}"))
+        else:
+            self.analysis.overview.set_custom_targets(targets)
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    # Background runs of the vehicle analyses.
+
+    def _vehicle_run(self, text, calls, done):
+        """Run session ``calls`` (``[(method, args, kwargs)]``) and give
+        their results to ``done``: in a child process when
+        :attr:`background`, else in place.  A new run replaces a running
+        one."""
+        tab = self.analysis.vehicle
+        self.cancel_vehicle_job()
+        if not self.background:
+            sess = self.session
+            outs = self._busy(tab.status, text, lambda: [
+                getattr(sess, name)(*args, **kwargs)
+                for name, args, kwargs in calls])
+            done(outs)
+            self.analysis.warnings.show_entries(sess.warnings)
+            return
+        self._job = _jobs.Job(_jobs.session_state(self.session), calls)
+        self._job_done = done
+        self._job_text = text
+        self._job_started = time.monotonic()
+        tab.set_running(True)
+        tab.status.setText(f"{text} (running in the background; Cancel "
+                           "stops it)")
+        self.job_timer.start(100)
+
+    def vehicle_job_running(self):
+        return self._job is not None
+
+    def _job_tick(self):
+        job = self._job
+        if job is None:
+            self.job_timer.stop()
+            return
+        tab = self.analysis.vehicle
+        result = job.poll()
+        if result is None:
+            tab.status.setText(
+                f"{self._job_text} {time.monotonic() - self._job_started:.0f}"
+                " s (running in the background; Cancel stops it)")
+            return
+        self.job_timer.stop()
+        self._job = None
+        done, self._job_done = self._job_done, None
+        tab.set_running(False)
+        status, outs, warnings = result
+        if 'error' == status:
+            last = outs.strip().splitlines()[-1] if outs.strip() else outs
+            tab.status.setText(f"failed: {last}")
+            self.session.warnings = [self.session._entry(
+                'error', 'vehicle', None, f"the analysis failed: {last}")]
+        else:
+            self.session.warnings = list(warnings)
+            done(outs)
+        self.analysis.warnings.show_entries(self.session.warnings)
+
+    def cancel_vehicle_job(self, note=""):
+        """Stop a background vehicle run; nothing of it is shown."""
+        if self._job is None:
+            return
+        self._job.cancel()
+        self._job = None
+        self._job_done = None
+        self.job_timer.stop()
+        if self.analysis is not None:
+            tab = self.analysis.vehicle
+            tab.set_running(False)
+            tab.status.setText(note or "cancelled: no result shown")
+
+    def wait_vehicle_job(self, timeout=600.0):
+        """Process events until the background run ends (for scripts and
+        tests)."""
+        start = time.monotonic()
+        while self._job is not None:
+            if time.monotonic() - start > timeout:
+                raise TimeoutError("the vehicle analysis did not finish")
+            QApplication.processEvents()
+            time.sleep(0.02)
+            self._job_tick()
 
     # The 3D frames of the analyses (P22).
 
@@ -945,39 +1192,48 @@ class SuspensionApp(base.PilotFeature):
             tab.show_handling(tab.last_handling)
 
     def on_vehicle(self, stem, setups=None):
-        tab = self.analysis.vehicle
-        out = self._busy(tab.status, "solving the steady turns...",
-                         lambda: self.session.run_vehicle(
-                             stem, setups=setups))
-        if out['completed']:
-            key = (stem, repr(sorted((setups or {}).items())))
-            self._understeer[key] = out['understeer']
-            tab.show_steady(out)
-            st = out['steady']
-            self.set_animation('vehicle', self._vehicle_frames(
-                [(f"steady turn {a:.2f} g", p)
-                 for a, p in zip(st['a_y'], st['poses'])], st['models']))
-        else:
-            tab.status.setText(f"failed: {out['message']}")
-        self.analysis.warnings.show_entries(self.session.warnings)
+        def done(outs):
+            out = outs[0]
+            tab = self.analysis.vehicle
+            if out['completed']:
+                key = (stem, repr(sorted((setups or {}).items())))
+                self._understeer[key] = out['understeer']
+                tab.show_steady(out)
+                self._vehicle_kpis('steady', out)
+                st = out['steady']
+                self.set_animation('vehicle', self._vehicle_frames(
+                    [(f"steady turn {a:.2f} g", p)
+                     for a, p in zip(st['a_y'], st['poses'])],
+                    st['models']))
+            else:
+                tab.status.setText(f"failed: {out['message']}")
+
+        self._vehicle_run("solving the steady turns...",
+                          [('run_vehicle', (stem,), {'setups': setups})],
+                          done)
 
     def on_step_steer(self, stem, speed_kmh, rack_mm, setups=None):
-        tab = self.analysis.vehicle
         key = (stem, repr(sorted((setups or {}).items())))
-        out = self._busy(tab.status, "marching the step steer (4 s)...",
-                         lambda: self.session.run_step_steer(
-                             stem, speed_kmh, rack_mm,
-                             self._understeer.get(key), setups=setups))
-        if out['completed']:
-            self._understeer[key] = out['understeer']
-            tab.show_step(out)
-            self.set_animation('vehicle', self._vehicle_frames(
-                [(f"step steer t = {t:.2f} s", p)
-                 for t, p in zip(out['pose_times'], out['poses'])],
-                out['models']), index=0)
-        else:
-            tab.status.setText(f"failed: {out['message']}")
-        self.analysis.warnings.show_entries(self.session.warnings)
+
+        def done(outs):
+            out = outs[0]
+            tab = self.analysis.vehicle
+            if out['completed']:
+                self._understeer[key] = out['understeer']
+                tab.show_step(out)
+                self._vehicle_kpis('step', out)
+                self.set_animation('vehicle', self._vehicle_frames(
+                    [(f"step steer t = {t:.2f} s", p)
+                     for t, p in zip(out['pose_times'], out['poses'])],
+                    out['models']), index=0)
+            else:
+                tab.status.setText(f"failed: {out['message']}")
+
+        self._vehicle_run("marching the step steer (4 s of driving)...",
+                          [('run_step_steer',
+                            (stem, speed_kmh, rack_mm,
+                             self._understeer.get(key)),
+                            {'setups': setups})], done)
 
     def on_dynamics(self):
         tab = self.analysis.dynamics

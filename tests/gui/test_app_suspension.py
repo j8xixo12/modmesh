@@ -46,6 +46,8 @@ class _Fixture(object):
 
     def _open(self, engine=ENGINE):
         feature = _app.SuspensionApp(mgr=self.mgr, engine=engine)
+        # The vehicle runs in place: a click gives its result at once.
+        feature.background = False
         self.addCleanup(self._dispose, feature)
         feature.open()
         QApplication.processEvents()
@@ -974,6 +976,170 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         vehicle.handling.click()
         vehicle.run.click()
         self.assertEqual(first, vehicle.status.text())
+
+    def test_the_vehicle_uses_the_corner_of_the_tree(self):
+        feature = self._open()
+        feature.ask_save = lambda p: 'temporary'
+        # The coilover car's front axle is macpherson_coilover.
+        feature.on_library('macpherson_coilover')
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        self.assertIn("front axle: the model tree", vehicle.sources.text())
+        self.assertIn("rear axle: its library file", vehicle.sources.text())
+        before = vehicle.setup_spins[('front', 'spring_rate')].value()
+        vehicle.run.click()
+        vehicle.step.click()
+        self.assertTrue(vehicle.roll_plot.labels())
+        self.assertTrue(feature.animations['vehicle'])
+        # A tree edit of the spring: the vehicle results of the old corner
+        # go, and the vehicle setup shows the edited spring.
+        feature.tree.select('spring')
+        feature.adjusters.edit_property('k', '75')
+        for plot in (vehicle.roll_plot, vehicle.yaw_plot):
+            self.assertEqual([], plot.labels())
+        self.assertEqual([], feature.animations['vehicle'])
+        self.assertIn(feature.MODEL_CHANGED, vehicle.status.text())
+        self.assertIn("unsaved edits", vehicle.sources.text())
+        after = vehicle.setup_spins[('front', 'spring_rate')].value()
+        self.assertGreater(after, before)
+
+    def test_overview_kpis_targets_and_their_reset(self):
+        from solvcon.apps.suspension import _overview
+        feature = self._open()
+        feature.ask_save = lambda p: 'temporary'
+        feature.on_library('macpherson_coilover')
+        overview = feature.analysis.overview
+        self.assertEqual(0, feature.analysis.tabs.currentIndex())
+        self.assertEqual('missing', overview.state('ride_frequency'))
+        overview.update_button.click()
+        ride = overview.values['ride_frequency']
+        self.assertGreater(ride, 0.5)
+        self.assertIn("Hz", overview.cards['ride_frequency'].text())
+        self.assertIn("OptimumG", overview.cards['ride_frequency']
+                      .toolTip())
+        # The profile moves the band, so the verdict.
+        states = set()
+        for k in range(overview.profile.count()):
+            overview.profile.setCurrentIndex(k)
+            states.add(overview.state('ride_frequency'))
+        self.assertTrue({'in', 'out'} & states)
+        self.assertEqual('none', overview.state('wheel_rate'))
+        # The vehicle runs fill the vehicle cards.
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        vehicle.run.click()
+        vehicle.longitudinal.click()
+        for key in ('roll_gradient', 'lltd', 'understeer_gradient',
+                    'brake_limit', 'anti_dive'):
+            self.assertIn(key, overview.values)
+        # The baseline: the change shows.
+        overview.set_baseline()
+        overview.update_button.click()
+        self.assertIn("change from baseline",
+                      overview.cards['ride_frequency'].text())
+        # A vehicle setup change drops the vehicle cards only.
+        vehicle.setup_spins[('front', 'spring_rate')].setValue(70.0)
+        self.assertIn('ride_frequency', overview.values)
+        self.assertNotIn('roll_gradient', overview.values)
+        # A tree edit drops every card (the vehicle uses the tree corner).
+        vehicle.run.click()
+        feature.tree.select('spring')
+        feature.adjusters.edit_property('k', '75')
+        for key, kpi in _overview._glossary.KPIS.items():
+            self.assertEqual('missing', overview.state(key), key)
+        self.assertIn(feature.MODEL_CHANGED,
+                      overview.group_notes['ride'].text())
+        # The updated corner: a stiffer spring, a higher ride frequency.
+        overview.update_button.click()
+        self.assertGreater(overview.values['ride_frequency'], ride)
+        # User targets win over the published band.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'targets.json')
+            with open(path, 'w') as fobj:
+                fobj.write('{"wheel_rate": [10, 20]}')
+            feature.load_targets(path)
+        self.assertEqual('out', overview.state('wheel_rate'))
+        self.assertIn("your targets file",
+                      overview.cards['wheel_rate'].toolTip())
+
+    def test_vehicle_tree_edits_and_opens_the_axles(self):
+        feature = self._open()
+        feature.ask_save = lambda p: 'temporary'
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        tree = feature.tree
+        for name in ('vehicle data', 'front axle', 'rear axle'):
+            self.assertIn(name, tree.names())
+        # Edit the vehicle data from the tree: the vehicle results go.
+        vehicle.run.click()
+        self.assertTrue(vehicle.roll_plot.labels())
+        tree.select('vehicle data')
+        feature.adjusters.edit_property('sprung_mass', '1600')
+        sess = feature.session
+        self.assertEqual(1600, sess.vehicle_data('coilover_car')
+                         ['sprung_mass'])
+        self.assertIn('coilover_car', sess.vehicle_dirty)
+        self.assertEqual([], vehicle.roll_plot.labels())
+        self.assertIn("vehicle changed", vehicle.status.text())
+        self.assertEqual(1600.0, sess._vehicle('coilover_car',
+                                               None).sprung_mass)
+        # A bad value keeps the vehicle.
+        feature.adjusters.edit_property('front_fraction', '1.5')
+        self.assertEqual(1600, sess.vehicle_data('coilover_car')
+                         ['sprung_mass'])
+        self.assertNotEqual(1.5, sess.vehicle_data('coilover_car')
+                            ['front_fraction'])
+        # Double-click an axle: its corner file opens in the tree.
+        tree.activate('rear axle')
+        self.assertTrue(sess.model_path.endswith('five_link_coilover.json'))
+        self.assertIn("rear axle: the model tree", vehicle.sources.text())
+        # Unsaved corner edits: cancel keeps the tree model.
+        tree.select('spring')
+        feature.adjusters.edit_property('k', '70')
+        feature.ask_switch = lambda p: 'cancel'
+        tree.activate('front axle')
+        self.assertTrue(sess.model_path.endswith('five_link_coilover.json'))
+        feature.ask_switch = lambda p: 'discard'
+        tree.activate('front axle')
+        self.assertTrue(sess.model_path.endswith(
+            'macpherson_coilover.json'))
+
+    def test_vehicle_runs_in_the_background(self):
+        feature = self._open()
+        feature.background = True
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'road_car'))
+        vehicle.run.click()
+        # The window is live: the run button waits, Cancel shows.
+        self.assertTrue(feature.vehicle_job_running())
+        self.assertFalse(vehicle.run.isEnabled())
+        self.assertTrue(vehicle.cancel.isVisibleTo(vehicle))
+        feature.wait_vehicle_job()
+        self.assertTrue(vehicle.run.isEnabled())
+        self.assertTrue(vehicle.roll_plot.labels())
+        self.assertTrue(feature.animations['vehicle'])
+        background = vehicle.status.text()
+        # The same numbers as a run in place.
+        feature.background = False
+        vehicle.run.click()
+        self.assertEqual(background, vehicle.status.text())
+        # Cancel: nothing of the run is shown.
+        feature.background = True
+        vehicle.clear_results()
+        vehicle.step.click()
+        vehicle.cancel.click()
+        self.assertFalse(feature.vehicle_job_running())
+        self.assertEqual([], vehicle.yaw_plot.labels())
+        self.assertIn("cancelled", vehicle.status.text())
+        # An input change while it runs drops the run.
+        vehicle.step.click()
+        feature.on_library('five_link_rear')
+        self.assertFalse(feature.vehicle_job_running())
+        self.assertEqual([], vehicle.yaw_plot.labels())
 
     def test_switching_the_model_while_a_run_marches(self):
         feature = self._open()

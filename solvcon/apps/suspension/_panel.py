@@ -64,6 +64,9 @@ class ModelTree(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.itemSelectionChanged.connect(self._on_selection)
+        #: Called with ``(group, name)`` on a double-click, when set.
+        self.activated = None
+        self.tree.itemDoubleClicked.connect(self._on_activated)
         layout.addWidget(self.file_label)
         layout.addWidget(QLabel("Library:"))
         layout.addWidget(self.library)
@@ -114,6 +117,19 @@ class ModelTree(QWidget):
             return
         group, props = self._properties[name]
         self.selected(group, name, props)
+
+    def _on_activated(self, item, column):
+        name = item.data(0, NAME_ROLE)
+        if name is None or self.activated is None:
+            return
+        group, _ = self._properties[name]
+        self.activated(group, name)
+
+    def activate(self, name):
+        """Double-click the item ``name`` (for scripts and tests)."""
+        item = self._items.get(name)
+        if item is not None:
+            self._on_activated(item, 0)
 
     def _on_open(self):
         if self.open_clicked is not None:

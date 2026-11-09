@@ -32,6 +32,7 @@ import copy
 import json
 import math
 import os
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -278,6 +279,11 @@ class SuspensionSession(object):
                        for name, kind in SWEEPS.items()}
         self.link_coincident = True
         self._run_count = 0
+        #: The vehicle the Vehicle tab and the tree show (a file stem or
+        #: path), its data with the unsaved edits, and the edited stems.
+        self.vehicle_stem = None
+        self.vehicle_raw = {}
+        self.vehicle_dirty = set()
         self.load(model_path or os.path.join(engine.data_dir,
                                              self.DEFAULT_MODEL))
 
@@ -404,8 +410,11 @@ class SuspensionSession(object):
             ("value", f"{self.adjusters[name]:+.2f} mm"),
             ("note", notes.get(name, {}).get('note', ''))])
             for name, title in ADJUSTERS if name in model.adjusters]
-        return [("Bodies", bodies), ("Links", links), ("Drivers", drivers),
-                ("Forces", forces), ("Adjusters", adjusters)]
+        out = [("Bodies", bodies), ("Links", links), ("Drivers", drivers),
+               ("Forces", forces), ("Adjusters", adjusters)]
+        if self.vehicle_stem is not None:
+            out.insert(0, ("Vehicle", self._vehicle_outline()))
+        return out
 
     def model(self, adjusters=None):
         """Return a copy of the model with ``adjusters`` (mm) applied,
@@ -578,6 +587,9 @@ class SuspensionSession(object):
         """The model file values behind a model tree item: ``[(label,
         path, unit, text)]``, ``path`` the keys into the file; the numbers
         in the units of the file.  An adjuster item edits its value (mm)."""
+        if 'Vehicle' == group:
+            return (self._vehicle_editable() if 'vehicle data' == name
+                    else [])
         if 'Adjusters' == group:
             for key, title in ADJUSTERS:
                 if title.lower() == name and self.has_adjuster(key):
@@ -616,6 +628,8 @@ class SuspensionSession(object):
         """
         if '__adjuster__' == path[0]:
             return self.set_adjuster(path[1], float(text))
+        if '__vehicle__' == path[0]:
+            return self.edit_vehicle(tuple(path[1:]), text)
         old = self._raw_value(path)
         try:
             value = json.loads(text)
@@ -1635,7 +1649,7 @@ class SuspensionSession(object):
     def vehicle_setup(self, stem):
         """``{"front": setup, "rear": setup}`` of a bundled vehicle (the
         fields of :attr:`VEHICLE_FIELDS` the corners have)."""
-        vm = self.engine.car.VehicleModel.load(stem)
+        vm = self._vehicle(stem, None)
         out = {}
         for axle_name, model in (("front", vm.front), ("rear", vm.rear)):
             base = self.engine.tuning.baseline(model)
@@ -1643,8 +1657,166 @@ class SuspensionSession(object):
                               if k in base}
         return out
 
+    def _vehicle_file(self, stem):
+        path = Path(stem)
+        if not path.exists():
+            path = Path(self.engine.car.DATA_DIR) / f"{stem}.json"
+        return path
+
+    def _corner_path(self, ref, base_dir):
+        """The file of a corner reference of a vehicle file, as
+        :class:`suspension.car.VehicleModel` resolves it."""
+        path = Path(ref)
+        if not path.is_absolute() and (Path(base_dir) / path).exists():
+            path = Path(base_dir) / path
+        if not path.exists():
+            path = Path(self.engine.model.DATA_DIR) / f"{ref}.json"
+        return os.path.abspath(str(path))
+
+    def set_vehicle(self, stem):
+        """The vehicle of the tree and the Vehicle tab."""
+        self.vehicle_stem = stem
+
+    def vehicle_data(self, stem):
+        """The vehicle file data with the unsaved edits (a copy)."""
+        if stem in self.vehicle_raw:
+            return copy.deepcopy(self.vehicle_raw[stem])
+        with open(self._vehicle_file(stem)) as fobj:
+            return json.load(fobj)
+
+    def axle_corner_path(self, axle_name, stem=None):
+        """The corner file of an axle of the vehicle, or None when the
+        vehicle file holds the corner inline."""
+        stem = stem or self.vehicle_stem
+        ref = self.vehicle_data(stem)[axle_name]
+        if isinstance(ref, dict):
+            return None
+        return self._corner_path(ref, self._vehicle_file(stem).parent)
+
+    #: The vehicle file keys the tree edits, with their units.
+    VEHICLE_UNITS = {
+        'wheelbase': "mm", 'sprung_mass': "kg", 'front_fraction': "",
+        'cg_height': "mm", 'sprung_inertia': "kg m^2",
+        'cornering_stiffness': "N/deg", 'mu': "", 'shape': "",
+        'stiffness_load_sensitivity': "", 'mu_load_sensitivity': "",
+        'reference_load': "N", 'load_exponent': "", 'relaxation_length': "m",
+    }
+
+    def _vehicle_outline(self):
+        stem = self.vehicle_stem
+        data = self.vehicle_data(stem)
+        sources = self.vehicle_sources(stem)
+        rows = [("name", data.get('name', stem))]
+        for key in ('sprung_mass', 'front_fraction', 'cg_height',
+                    'wheelbase', 'sprung_inertia'):
+            if key in data:
+                rows.append((key.replace('_', ' '),
+                             f"{data[key]} {self.VEHICLE_UNITS[key]}"
+                             .strip()))
+        for key, value in sorted(data.get('tire', {}).items()):
+            rows.append((f"tire {key.replace('_', ' ')}",
+                         f"{value} {self.VEHICLE_UNITS.get(key, '')}"
+                         .strip()))
+        if stem in self.vehicle_dirty:
+            rows.append(("state", "unsaved edits"))
+        out = [("vehicle data", rows)]
+        for axle_name in ("front", "rear"):
+            path = self.axle_corner_path(axle_name)
+            out.append((f"{axle_name} axle", [
+                ("corner file", "inline" if path is None
+                 else os.path.basename(path)),
+                ("in the model tree", "yes" if sources[axle_name] else
+                 "no: double-click to open it in the tree")]))
+        return out
+
+    def _vehicle_editable(self):
+        data = self.vehicle_data(self.vehicle_stem)
+        rows = []
+        for key in ('sprung_mass', 'front_fraction', 'cg_height',
+                    'wheelbase', 'sprung_inertia'):
+            if key in data:
+                rows.append((key, ('__vehicle__', key),
+                             self.VEHICLE_UNITS[key], json.dumps(data[key])))
+        for key, value in sorted(data.get('tire', {}).items()):
+            if isinstance(value, (int, float, list)) \
+                    and not isinstance(value, bool):
+                rows.append((f"tire / {key}", ('__vehicle__', 'tire', key),
+                             self.VEHICLE_UNITS.get(key, ""),
+                             json.dumps(value)))
+        return rows
+
+    def edit_vehicle(self, path, text):
+        """Change a value of the vehicle file of :attr:`vehicle_stem` (in
+        this session; see :meth:`save_vehicle`).
+
+        :param path: keys into the vehicle file
+        :raises ValueError: for a value of another type or a vehicle the
+            change breaks (the vehicle keeps its last valid state)
+        """
+        stem = self.vehicle_stem
+        raw = self.vehicle_data(stem)
+        node = raw
+        for key in path[:-1]:
+            node = node[key]
+        old = node[path[-1]]
+        value = json.loads(text)
+        if isinstance(old, (int, float)) and not isinstance(old, bool):
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"{'/'.join(path)} takes a number, not "
+                                 f"{text!r}")
+        elif isinstance(old, list):
+            if not isinstance(value, list) or len(value) != len(old):
+                raise ValueError(f"{'/'.join(path)} takes a list of "
+                                 f"{len(old)} values")
+        node[path[-1]] = value
+        # The vehicle must still build.
+        trial = copy.deepcopy(raw)
+        for axle_name, tree in self.vehicle_sources(stem).items():
+            if tree:
+                trial[axle_name] = copy.deepcopy(self.base_model.raw)
+        self.engine.car.VehicleModel(trial,
+                                     base_dir=self._vehicle_file(stem).parent)
+        self.vehicle_raw[stem] = raw
+        self.vehicle_dirty.add(stem)
+        return True
+
+    def save_vehicle(self, path=None):
+        """Write the vehicle file of :attr:`vehicle_stem` with its edits
+        (over its file by default)."""
+        stem = self.vehicle_stem
+        path = os.path.abspath(str(path or self._vehicle_file(stem)))
+        with open(path, 'w') as fobj:
+            json.dump(self.vehicle_data(stem), fobj, indent=2)
+            fobj.write("\n")
+        self.vehicle_dirty.discard(stem)
+        return path
+
+    def vehicle_sources(self, stem):
+        """Which axle of a vehicle is the corner of the model tree.
+
+        An axle whose corner file is the file of the model tree uses the
+        model of the tree, with its unsaved edits: the vehicle and the
+        corner analyses see one model.
+
+        :return: ``{"front": bool, "rear": bool}``
+        """
+        path = self._vehicle_file(stem)
+        raw = self.vehicle_data(stem)
+        out = {}
+        for axle_name in ("front", "rear"):
+            ref = raw[axle_name]
+            out[axle_name] = (not isinstance(ref, dict)
+                              and self._corner_path(ref, path.parent)
+                              == self.model_path)
+        return out
+
     def _vehicle(self, stem, setups):
-        vm = self.engine.car.VehicleModel.load(stem)
+        path = self._vehicle_file(stem)
+        raw = self.vehicle_data(stem)
+        for axle_name, tree in self.vehicle_sources(stem).items():
+            if tree:
+                raw[axle_name] = copy.deepcopy(self.base_model.raw)
+        vm = self.engine.car.VehicleModel(raw, base_dir=path.parent)
         setups = setups or {}
         return vm.with_setup(front=setups.get('front'),
                              rear=setups.get('rear'))
@@ -1795,12 +1967,84 @@ class SuspensionSession(object):
             self.warnings.append(self._entry(
                 'error', 'vehicle', None, f"step steer failed: {exc}"))
             return {'completed': False, 'message': str(exc)}
+        for check in run['checks']:
+            self.warnings.append(self._entry(
+                'error' if 'invalid' == check['level'] else 'warning',
+                'vehicle', None, f"step steer: {check['message']}"))
         v = float(run['steady']['speed'])
         run.update({'completed': True, 'message': '', 'delta': delta,
                     'understeer': understeer,
                     'bicycle_yaw_rate': v * delta / (
                         vm.wheelbase + understeer * v * v / 9.81)})
         return run
+
+    # The overview KPIs (see _glossary).
+
+    def corner_kpis(self, sprung_mass):
+        """The corner KPIs of the model with its setup and adjusters, at
+        the static travel, for the corner sprung mass ``sprung_mass`` (kg).
+
+        :return: dict with ``completed``, ``message``, and ``values``
+            (``{kpi: value}`` in the units of :data:`_glossary.KPIS`)
+        """
+        eng = self.engine
+        self.warnings = []
+        try:
+            model = self.model()
+            ro = eng.tuning.readouts(eng.mbs, model, float(sprung_mass),
+                                     axle_roll=model.arb is not None)
+            s0 = float(model.static_travel)
+            step = 5.0 / MM
+            sweep = eng.kc.bump_sweep(eng.mbs, model,
+                                      [s0 - step, s0, s0 + step])
+            if not sweep['completed']:
+                raise RuntimeError(sweep['message'])
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'overview', None, f"corner KPIs failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        deg = 180.0 / math.pi
+        per_10mm = 10.0 / MM / (2.0 * step) * deg
+        values = {key: ro[key] for key in (
+            'ride_frequency', 'damping_ratio_bump', 'damping_ratio_rebound',
+            'wheel_rate', 'motion_ratio', 'hop_mode', 'roll_center', 'kpi',
+            'caster', 'bump_travel_left', 'roll_stiffness') if key in ro}
+        values['camber_gain'] = float(sweep['camber'][2]
+                                      - sweep['camber'][0]) * per_10mm
+        values['bump_steer'] = float(sweep['toe'][2]
+                                     - sweep['toe'][0]) * per_10mm
+        return {'completed': True, 'message': '', 'values': values}
+
+    @staticmethod
+    def vehicle_kpis(kind, out):
+        """The vehicle KPIs of one Vehicle tab result.
+
+        :param kind: ``'steady'`` (:meth:`run_vehicle`), ``'handling'``,
+            ``'step'``, or ``'longitudinal'``
+        :return: ``{kpi: value}`` (empty for a failed result)
+        """
+        if not out.get('completed'):
+            return {}
+        deg = 180.0 / math.pi
+        if 'steady' == kind:
+            ss = out['steady']
+            return {'roll_gradient': float(ss['roll_gradient']),
+                    'lltd': float(ss['lltd']) * 100.0,
+                    'understeer_gradient': float(out['understeer']) * deg}
+        if 'handling' == kind:
+            return {} if out.get('limit') is None else {
+                'lateral_limit': float(out['limit'])}
+        if 'step' == kind:
+            st = out['steady']
+            values = {'step_ay': float(st['lateral_acceleration']) / 9.81}
+            if abs(out['delta']) > 0.0:
+                values['yaw_gain'] = float(st['yaw_rate'] / out['delta'])
+            return values
+        if 'longitudinal' == kind:
+            return {'brake_limit': float(out['brake']['limit']),
+                    'anti_dive': float(out['braking']['anti'][0]) * 100.0,
+                    'traction_limit': float(out['traction']['limit'])}
+        raise ValueError(f"unknown vehicle result kind {kind!r}")
 
     def road_input(self, kind, params, sprung_mass=200.0):
         """Build the :class:`suspension.road.RoadInput` of a road input.
