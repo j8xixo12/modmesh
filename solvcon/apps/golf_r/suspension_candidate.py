@@ -1,11 +1,32 @@
 # Copyright (c) 2026, solvcon team <contact@solvcon.net>
 # BSD 3-Clause License, see COPYING
 
-"""Experimental AC hardpoint mapping for independent K&C comparison.
+"""Corner models from Assetto Corsa suspension data (``suspensions.ini``).
 
-The mapping is a hypothesis: chassis points are measured from the axle
-centre, tyre points from the wheel centre, with X inboard, Y up, Z forward.
-It requires external validation before it can be called a Golf R model.
+The AC hardpoints are measured from the wheel centre: X inboard, Y up, Z
+forward, in metres.  Both the car side (``WBCAR_*``, ``STRUT_CAR``) and the
+tyre side (``WBTYRE_*``, ``STRUT_TYRE``) use this origin (AC modding forum,
+"Suspension geometry": "wheel centreline. To check just set a value to
+0,0,0 and see where it is").  The geometry confirms it: the front strut
+gives a kingpin inclination of 14.8 deg and the rear toe link is 508 mm long;
+the axle-centre reading gives 33.5 deg and 114 mm, which no road car has.
+
+AC gives the spring, damper, bump stop, and anti-roll bar as wheel rates.
+The corner model holds them on its spring line (the strut axis of the front
+MacPherson, a vertical line at the rear wheel centre), so this module
+divides them by the motion ratio of a K&C sweep.  The anti-roll bar is an
+equivalent bar (assumed geometry) whose torsion rate gives the AC axle roll
+stiffness.
+
+Assumptions (also in the ``assumptions`` list of each model):
+
+* the AC design pose is the static pose (the spring holds it);
+* ``[ARB] FRONT/REAR`` is the force per unit differential wheel travel (N/m),
+  an axle roll stiffness of k t^2 (N m/rad);
+* the droop stop rate is ``BUMP_STOP_RATE``;
+* ``PROGRESSIVE_SPRING_RATE`` (N/m^2) is left out: it adds 1.4 % (front)
+  and 0.6 % (rear) to the wheel rate at 50 mm of bump;
+* ``ROD_LENGTH`` only sets the AC ride height, which is the design pose here.
 """
 
 import configparser
@@ -14,68 +35,281 @@ from pathlib import Path
 
 import numpy as np
 
+#: Equivalent anti-roll bar geometry relative to the wheel centre (mm, x
+#: forward, y outboard, z up): the drop link point on the upright, the arm
+#: tip above it, and the bar pivot ahead of the tip (a 200 mm arm).
+ARB_LINK = np.array([-150.0, -150.0, 0.0])
+ARB_TIP = np.array([-150.0, -150.0, 150.0])
+ARB_PIVOT = np.array([-350.0, -150.0, 150.0])
+#: A small travel (m) for the roll stiffness.
+PROBE = 1e-3
 
-def candidate(axle, data_dir):
+
+def read_ini(path):
+    """Read one AC ini file (``;`` comments, no interpolation).
+
+    :param path: path of the ini file
+    :type path: pathlib.Path or str
+    :return: the parsed file
+    :rtype: configparser.ConfigParser
+    :raises FileNotFoundError: when the file does not exist
+    """
     cfg = configparser.ConfigParser(
-        interpolation=None, inline_comment_prefixes=(';',)
+        interpolation=None, inline_comment_prefixes=(';',), strict=False
     )
-    path = Path(data_dir) / 'suspensions.ini'
     if not cfg.read(path):
         raise FileNotFoundError(path)
+    return cfg
+
+
+def tyre_section(axle, data_dir):
+    """The ``tyres.ini`` section of the axle (the default compound).
+
+    :raises FileNotFoundError: when ``tyres.ini`` is missing
+    """
+    return read_ini(Path(data_dir) / 'tyres.ini')[axle.upper()]
+
+
+def cg_height(data_dir):
+    """The sprung CG height (m) of the AC car.
+
+    AC puts the CG -BASEY above the wheel centre, so radius - BASEY above
+    the road per axle; the axles weigh by the front share ``CG_LOCATION``.
+    """
+    cfg = read_ini(Path(data_dir) / 'suspensions.ini')
+    share = float(cfg['BASIC']['CG_LOCATION'])
+    front, rear = (float(tyre_section(a, data_dir)['RADIUS'])
+                   - float(cfg[a.upper()]['BASEY'])
+                   for a in ('front', 'rear'))
+    return share * front + (1.0 - share) * rear
+
+
+def _damper(section, motion_ratio):
+    """The AC two-stage damper as a force-velocity table on the spring line.
+
+    AC gives wheel-rate slopes (N.s/m) below and above a threshold wheel
+    speed (m/s), in bump and in rebound.  On the spring line the speed is
+    mr v and the force F / mr.
+    """
+    def side(slow, fast, threshold):
+        c_slow = float(section[slow])
+        c_fast = float(section[fast])
+        knee = float(section[threshold])
+        if min(c_slow, c_fast) < 0.0 or knee <= 0.0:
+            raise ValueError(f'{slow}: negative slope or threshold')
+        # Wheel speeds (m/s) and forces (N): the knee and one point past it.
+        return [knee, 3.0 * knee], [c_slow * knee,
+                                    c_slow * knee + c_fast * 2.0 * knee]
+
+    bump_v, bump_f = side('DAMP_BUMP', 'DAMP_FAST_BUMP',
+                          'DAMP_FAST_BUMPTHRESHOLD')
+    reb_v, reb_f = side('DAMP_REBOUND', 'DAMP_FAST_REBOUND',
+                        'DAMP_FAST_REBOUNDTHRESHOLD')
+    wheel_v = [-v for v in reversed(bump_v)] + [0.0] + reb_v
+    wheel_f = [-f for f in reversed(bump_f)] + [0.0] + reb_f
+    return {
+        'kind': 'table',
+        'velocity': [1000.0 * motion_ratio * v for v in wheel_v],
+        'force': [f / motion_ratio for f in wheel_f],
+        'note': 'AC two-stage damper (DAMP_*), wheel rates divided by the '
+                f'motion ratio {motion_ratio:.4f}; mm/s on the spring '
+                'line (+ rebound), N',
+    }
+
+
+def _kingpin_offset(tyre_point, axis_a, axis_b):
+    """Distance (m) of the steering arm point from the steering axis."""
+    d = axis_b - axis_a
+    d = d / np.linalg.norm(d)
+    r = tyre_point - axis_a
+    return float(np.linalg.norm(r - (r @ d) * d))
+
+
+def geometry(axle, data_dir):
+    """The corner model of the AC hardpoints with unit rates.
+
+    The spring, damper, stop, and bar rates are placeholders that
+    :func:`candidate` replaces with the AC wheel rates.
+
+    :param axle: ``'front'`` (MacPherson, ``TYPE=STRUT``) or ``'rear'``
+        (double wishbone with a toe link, ``TYPE=DWB``)
+    :type axle: str
+    :param data_dir: directory of ``suspensions.ini`` and ``tyres.ini``
+    :type data_dir: str or pathlib.Path
+    :return: corner model data (mm, N/mm), left side
+    :rtype: dict
+    """
+    cfg = read_ini(Path(data_dir) / 'suspensions.ini')
     section = cfg[axle.upper()]
+    kind = section.get('TYPE', 'STRUT' if 'front' == axle else 'DWB')
+    if kind not in ('STRUT', 'DWB') or ('front' == axle) != (
+            'STRUT' == kind):
+        raise ValueError(f'{axle}: suspension TYPE={kind} is not supported '
+                         '(front STRUT, rear DWB)')
     half_track = float(section['TRACK']) / 2
-    radius = 0.320
+    tyre = tyre_section(axle, data_dir)
+    radius = float(tyre['RADIUS'])
 
-    def point(key, tyre=False):
-        x, y, z = (float(v) for v in section[key].split(','))
-        lateral = half_track - x if tyre else x
-        return [1000 * z, 1000 * lateral, 1000 * (radius + y)]
+    def raw(key):
+        return np.array([float(v) for v in section[key].split(',')])
 
-    def link(car, tyre, rack=False):
-        return {
-            ('rack' if rack else 'chassis'): point(car),
-            'upright': point(tyre, True),
-        }
+    def point(key):
+        # Wheel-centre frame (x inboard, y up, z forward) to the corner
+        # frame (x forward, y left, z up) of the left corner.
+        x, y, z = raw(key)
+        return [1000.0 * z, 1000.0 * (half_track - x),
+                1000.0 * (radius + y)]
+
+    def link(car, tyre_point, rack=False):
+        return {('rack' if rack else 'chassis'): point(car),
+                'upright': point(tyre_point)}
 
     links = {
         'lower_front': link('WBCAR_BOTTOM_FRONT', 'WBTYRE_BOTTOM'),
         'lower_rear': link('WBCAR_BOTTOM_REAR', 'WBTYRE_BOTTOM'),
-        'tie_rod': link('WBCAR_STEER', 'WBTYRE_STEER', axle == 'front'),
+        'tie_rod': link('WBCAR_STEER', 'WBTYRE_STEER', 'front' == axle),
     }
-    if axle == 'rear':
-        links.update(
-            {
-                'upper_front': link('WBCAR_TOP_FRONT', 'WBTYRE_TOP'),
-                'upper_rear': link('WBCAR_TOP_REAR', 'WBTYRE_TOP'),
-            }
-        )
+    if 'rear' == axle:
+        links['upper_front'] = link('WBCAR_TOP_FRONT', 'WBTYRE_TOP')
+        links['upper_rear'] = link('WBCAR_TOP_REAR', 'WBTYRE_TOP')
+        axis = raw('WBTYRE_BOTTOM'), raw('WBTYRE_TOP')
+    else:
+        axis = raw('STRUT_TYRE'), raw('STRUT_CAR')
+    # Static camber (negative: the top leans inboard) and static toe (AC
+    # TOE_OUT is a length change of the steering arm, + toe-out).
     camber = math.radians(float(section['STATIC_CAMBER']))
+    arm = _kingpin_offset(raw('WBTYRE_STEER'), *axis)
+    toe_out = math.atan2(float(section.get('TOE_OUT', '0')), arm)
+    spin = [-math.sin(toe_out) * math.cos(camber),
+            math.cos(toe_out) * math.cos(camber), -math.sin(camber)]
+    center = [0.0, 1000.0 * half_track, 1000.0 * radius]
     model = {
-        'name': 'Golf R ' + axle + ' candidate',
-        'source': 'Experimental hardpoint interpretation; not validated',
+        'name': f'Golf R {axle} (AC data)',
+        'source': 'Assetto Corsa suspensions.ini and tyres.ini; hardpoints '
+                  'from the wheel centre',
         'side': 'left',
-        'type': 'macpherson' if axle == 'front' else 'double_wishbone',
-        'wheel': {
-            'radius': 320.0,
-            'center': [0, half_track * 1000, 320],
-            'spin_axis': [0, math.cos(camber), math.sin(camber)],
-        },
-        'upright': {'mass': 45.0, 'inertia': [1.0, 1.0, 1.0]},
+        'type': 'macpherson' if 'front' == axle else 'double_wishbone',
+        'wheel': {'radius': 1000.0 * radius, 'center': center,
+                  'spin_axis': spin},
+        'upright': {'mass': float(section['HUB_MASS']),
+                    'inertia': [1.0, 1.0, 1.0]},
         'links': links,
-        'spring': {
-            'upright': [0, half_track * 1000, 320],
-            'chassis': [0, half_track * 1000, 620],
-            'k': float(section['SPRING_RATE']) / 1000,
-            'c': 1.0,
-        },
-        'tire': {'k': 298.926, 'c': 0.1},
+        'tire': {'k': float(tyre['RATE']) / 1000.0,
+                 'c': float(tyre.get('DAMP', '0')) / 1000.0},
     }
-    if axle == 'front':
-        model['strut'] = {
-            'top_mount': point('STRUT_CAR'),
-            'upright': point('STRUT_TYRE', True),
-        }
+    if 'front' == axle:
+        model['strut'] = {'top_mount': point('STRUT_CAR'),
+                          'upright': point('STRUT_TYRE')}
         model['rack'] = {'mass': 1.5, 'axis': [0, 1, 0]}
+        # The coil spring and the damper on the strut axis.
+        model['spring'] = {'upright': point('STRUT_TYRE'),
+                           'chassis': point('STRUT_CAR'), 'k': 1.0,
+                           'c': 0.0}
+    else:
+        # AC gives no rear spring position: a vertical line at the wheel
+        # centre (motion ratio 1), as AC applies its wheel rate.
+        model['spring'] = {'upright': list(center),
+                           'chassis': [0.0, center[1], center[2] + 300.0],
+                           'k': 1.0, 'c': 0.0}
+    c = np.array(center)
+    model['arb'] = {'bar_pivot': (c + ARB_PIVOT).tolist(),
+                    'arm_tip': (c + ARB_TIP).tolist(),
+                    'link_point': (c + ARB_LINK).tolist(),
+                    'axis': [0.0, 1.0, 0.0], 'k': 1.0, 'mass': 1.0,
+                    'inertia': [0.005, 0.005, 0.005]}
+    model['vehicle'] = {
+        'half_track': 1000.0 * half_track,
+        'wheelbase': 1000.0 * float(cfg['BASIC']['WHEELBASE']),
+        'cg_height': 1000.0 * cg_height(data_dir),
+        'front_brake_fraction': float(read_ini(
+            Path(data_dir) / 'brakes.ini')['DATA']['FRONT_SHARE']),
+        'corner_mass': 0.5 * float(read_ini(Path(data_dir) / 'car.ini')[
+            'BASIC']['TOTALMASS']) * (
+            float(cfg['BASIC']['CG_LOCATION']) if 'front' == axle
+            else 1.0 - float(cfg['BASIC']['CG_LOCATION'])),
+    }
+    return model
+
+
+def motion_ratio(mbs, data):
+    """Spring-line travel per unit wheel travel at the design pose."""
+    from solvcon.multibody.suspension import kc
+    from solvcon.multibody.suspension.model import CornerModel
+
+    res = kc.bump_sweep(mbs, CornerModel(data), [0.0])
+    if not res['completed']:
+        raise RuntimeError(f'motion ratio sweep failed: {res["message"]}')
+    return float(res['motion_ratio'][0])
+
+
+def candidate(axle, data_dir):
+    """The corner model with the AC wheel rates on its spring line.
+
+    :param axle: ``'front'`` or ``'rear'``
+    :type axle: str
+    :param data_dir: directory of ``suspensions.ini`` and ``tyres.ini``
+    :type data_dir: str or pathlib.Path
+    :return: corner model data (mm, N/mm, N.s/mm), left side, with
+        ``assumptions`` and the AC ``wheel_rates``
+    :rtype: dict
+    """
+    from solvcon import multibody
+    from solvcon.multibody.suspension import axle as axle_mod
+    from solvcon.multibody.suspension.model import CornerModel
+
+    cfg = read_ini(Path(data_dir) / 'suspensions.ini')
+    section = cfg[axle.upper()]
+    model = geometry(axle, data_dir)
+    mr = motion_ratio(multibody, model)
+    k_wheel = float(section['SPRING_RATE'])
+    model['spring']['k'] = k_wheel / mr / mr / 1000.0
+    model['spring']['damper'] = _damper(section, mr)
+    assumptions = [
+        'AC design pose is the static pose',
+        'ARB: force per unit differential wheel travel (N/m), roll '
+        'stiffness k t^2; equivalent bar geometry',
+        'droop stop rate = BUMP_STOP_RATE',
+        'PROGRESSIVE_SPRING_RATE left out (< 1.5 % at 50 mm)',
+        'upright inertia 1 kg m^2 about each axis',
+    ]
+    bump = float(section['BUMPSTOP_UP']) * 1000.0
+    droop = -float(section['BUMPSTOP_DN']) * 1000.0
+    if droop >= 0.0:
+        # AC puts this droop stop at the design pose: the wheel cannot drop
+        # below the static height.  The stop needs a travel below static.
+        assumptions.append(f'BUMPSTOP_DN={section["BUMPSTOP_DN"].strip()} '
+                           'puts the droop stop at the static pose; the '
+                           'model uses 1 mm below it')
+        droop = -1.0
+    k_stop = float(section['BUMP_STOP_RATE']) / mr / mr / 1000.0
+    model['stops'] = {'bump_travel': bump, 'droop_travel': droop,
+                      'k': k_stop,
+                      'note': 'AC BUMPSTOP_UP/DN and BUMP_STOP_RATE (wheel '
+                              'rate / mr^2)'}
+    # The equivalent bar: the roll stiffness it adds per unit torsion rate.
+    track = 2.0 * float(model['vehicle']['half_track']) / 1000.0
+    arb = float(cfg['ARB'][axle.upper()])
+    target = arb * track * track
+    unit = CornerModel(model)
+    travels = [-PROBE, 0.0, PROBE]
+    without = axle_mod.roll_sweep(multibody, unit, travels, False)
+    with_bar = axle_mod.roll_sweep(multibody, unit, travels, True)
+    for res in (without, with_bar):
+        if not res['completed']:
+            raise RuntimeError(f'roll sweep failed: {res["message"]}')
+    per_unit = float(with_bar['roll_stiffness'][1]
+                     - without['roll_stiffness'][1])
+    if per_unit <= 0.0:
+        raise RuntimeError('the equivalent anti-roll bar adds no roll '
+                           'stiffness')
+    model['arb']['k'] = target / per_unit
+    model['arb']['note'] = (f'equivalent bar of AC [ARB] {axle.upper()}='
+                            f'{arb:g} N/m: {target * math.pi / 180.0:.0f} '
+                            'N m/deg of axle roll stiffness')
+    model['assumptions'] = assumptions
+    model['wheel_rates'] = {'spring': k_wheel,
+                            'bump_stop': float(section['BUMP_STOP_RATE']),
+                            'arb': arb, 'motion_ratio': mr}
     return model
 
 
@@ -113,7 +347,6 @@ def compare(axle, data_dir):
         'spring_length_m': result['spring_length'].tolist(),
         'roll_center_m': result['roll_center'].tolist(),
         'reference_max_abs_error': errors,
-        'warning': 'Both solvers use the same unverified geometry.',
     }
 
 
@@ -137,7 +370,6 @@ def steering(data_dir):
         'rack_m': result['rack'].tolist(),
         'toe_rad': result['toe'].tolist(),
         'camber_rad': result['camber'].tolist(),
-        'warning': 'Rack travel and geometry are candidate assumptions.',
     }
 
 

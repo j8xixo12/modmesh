@@ -103,8 +103,20 @@ class Playback:
             f'MULTIBODY STEP STEER | {self.input_speed:.1f} m/s | '
             f'rack: {self.input_rack * 1000:+.1f} mm'
         )
+        checks = self.data.get('checks', [])
+        verdict = (
+            'Physical checks passed.'
+            if self.data.get('plausible', True)
+            else 'NOT PLAUSIBLE: '
+            + '; '.join(
+                c['message'] for c in checks if 'invalid' == c['level']
+            )
+        )
+        warnings = [c['message'] for c in checks if 'warning' == c['level']]
         v.notices.setText(
-            'Experimental candidate geometry and parameters; '
+            verdict
+            + (' Warnings: ' + '; '.join(warnings) + '.' if warnings else '')
+            + ' AC data with the assumptions of suspension_candidate; '
             'wheel spin is illustrative, not a solved state.'
         )
         v.subwin.setWindowTitle('Golf R | Body dynamics')
@@ -237,6 +249,8 @@ def main():
     )
     speed, rack = args.speed_kmh / 3.6, args.rack_mm / 1000
     data = run(args.data_dir, speed=speed, rack=rack)
+    for check in data['checks']:
+        print(f"{check['level']}: {check['message']}", flush=True)
     export_csv(data, args.output)
     controller = pilot.controller
     controller.build()

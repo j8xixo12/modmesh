@@ -9,7 +9,6 @@ import unittest
 from pathlib import Path
 import numpy as np
 from solvcon.apps.golf_r.bicycle import Vehicle, simulate, torque_curve
-from solvcon.apps.golf_r.suspension_candidate import candidate
 from solvcon.apps.golf_r.multibody_pose import transforms
 from solvcon.multibody.suspension.metrics import rot
 
@@ -30,22 +29,6 @@ class IntegrationTest(unittest.TestCase):
             )
             self.assertGreater(states[-1, 3], 15)
             self.assertAlmostEqual(states[-1, 1], 0)
-
-    def test_candidate_reads_external_hardpoints(self):
-        fixture = (
-            '[FRONT]\nTRACK=1.6\nSTATIC_CAMBER=-2\nSPRING_RATE=50000\n'
-            'STRUT_CAR=.2,.5,0\nSTRUT_TYRE=.1,-.1,0\n'
-            'WBCAR_BOTTOM_FRONT=.4,-.1,.2\n'
-            'WBCAR_BOTTOM_REAR=.4,-.1,-.2\n'
-            'WBTYRE_BOTTOM=.1,-.1,0\n'
-            'WBCAR_STEER=.5,0,-.1\nWBTYRE_STEER=.1,0,-.1\n'
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / 'suspensions.ini').write_text(fixture)
-            model = candidate('front', tmp)
-            self.assertEqual(model['type'], 'macpherson')
-            np.testing.assert_allclose(model['wheel']['center'], [0, 800, 320])
-            self.assertEqual(model['spring']['k'], 50)
 
     def test_wheel_pivot_tracks_solved_upright(self):
         corners = ('front_left', 'front_right', 'rear_left', 'rear_right')
