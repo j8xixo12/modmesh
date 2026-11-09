@@ -5,9 +5,10 @@
 """The handling diagram of the full vehicle (``suspension.car``) with the
 load-sensitive tire, and the vehicle setup.
 
-* Its slope at a_y -> 0 is the understeer gradient (a car without static
-  toe; with toe and a load-sensitive cornering stiffness a first-order toe
-  term adds to it).
+* Its slope at a_y -> 0 is the understeer gradient, also for a car with
+  static toe: the roll steer of the rig weighs the wheel angles by the
+  cornering stiffness at the wheel loads, which holds the side force of the
+  toe under load transfer.
 * A stiffer front bar adds understeer at the limit and a stiff rear bar
   turns the limit to the rear axle (Milliken & Milliken, RCVD Ch. 18).
 * The tire grip bounds the limit.
@@ -39,6 +40,16 @@ def test_handling_slope_is_the_understeer_gradient():
     assert slope == pytest.approx(kus, rel=0.02)
 
 
+def test_handling_slope_with_static_toe():
+    # The road car has static toe on both axles.
+    vm = car.VehicleModel.load("road_car")
+    hd = car.handling_diagram(multibody, vm, [0.0, 0.02, 0.04])
+    ss = car.steady_state(multibody, vm, (0.0, 0.02, 0.04))
+    kus = car.understeer_gradient(vm, ss["roll_steer"])
+    slope = np.polyfit(hd["a_y"], hd["understeer_angle"], 1)[0]
+    assert slope == pytest.approx(kus, rel=0.02)
+
+
 @pytest.fixture(scope="module")
 def coilover_car():
     return car.VehicleModel.load("coilover_car")
@@ -50,11 +61,16 @@ def test_bars_move_the_limit_balance(coilover_car):
         k = int(np.argmin(np.abs(hd["a_y"] - a)))
         return hd, hd["understeer_angle"][k]
 
-    base, u_base = at(coilover_car, 0.8)
+    # Near the limit (1.05 g) the bars move the balance through the load
+    # transfer and the falling friction of the loaded tires.  Below about
+    # 0.8 g the change of the roll steer is larger: the cornering
+    # stiffness grows with F_z^0.88, nearly linear, so the load transfer
+    # costs little stiffness there.
+    base, u_base = at(coilover_car, 0.9)
     stiff_front, u_front = at(coilover_car.with_setup(
-        front={"arb_rate": 40.0}), 0.8)
+        front={"arb_rate": 40.0}), 0.9)
     stiff_rear, u_rear = at(coilover_car.with_setup(
-        front={"arb_rate": 5.0}, rear={"arb_rate": 80.0}), 0.8)
+        front={"arb_rate": 5.0}, rear={"arb_rate": 80.0}), 0.9)
     assert u_front > u_base > u_rear
     assert base["limited_by"] == "front"
     assert stiff_rear["limited_by"] == "rear"

@@ -9,12 +9,15 @@ Rules under test:
 
 * The tire carries m g with deflection m g / k and never pulls (no tension).
 * At slip angle alpha the lateral force is -C_alpha alpha, capped at mu F_z.
-* Load sensitivity: C_alpha ~ F_z^n and mu ~ F_z^(n-1) about F_z0.
-* The brush (Fiala) curve has the slope C_alpha at zero slip and slides at
-  tan(alpha) = 3 mu F_z / C_alpha (Pacejka 2012, Sec. 3.2.2).
-* A longitudinal demand leaves the side force the rest of the friction
-  circle; the relaxation length lags the slip angle over the rolled
-  distance.
+* The Magic Formula tire (Pacejka 2012, Sec. 4.3.2) gives D sin(C atan(B
+  tan alpha)) at pure side slip: the slope B C D at zero slip, the peak D =
+  mu F_z (F_z / F_z0)^(n - 1) at B tan(alpha) = tan(pi / (2 C)), and the
+  sliding level D sin(C pi / 2).  The combined slip uses the theoretical
+  slip: a locked wheel slides against its slip velocity.
+* A longitudinal demand sets the slip ratio of the Magic Formula tire and
+  locks the wheel past the peak; the linear tire keeps the rest of the
+  friction circle.  The relaxation length lags the slip angle over the
+  rolled distance.
 * A Python force that implements a torsional spring reproduces the analytic
   oscillator, so the callback path gives the same physics as built-in elements.
 """
@@ -115,39 +118,101 @@ def slipping_wheel(mbs, alpha, c_alpha, mu, delta=0.01, k=2e5, speed=10.0,
 
 
 FZ = 2e5 * 0.01
+#: A Magic Formula tire with the lateral peak at 7.52 deg and the sliding
+#: level 0.86 of the peak (the AC data of the Golf R semislick).
+SHAPE = 2.0 - 2.0 / math.pi * math.asin(0.86)
+PEAK = math.radians(7.52)
+B_Y = math.tan(0.5 * math.pi / SHAPE) / math.tan(PEAK)
 
 
-def test_load_sensitivity_scales_stiffness_and_friction(mbs):
-    n, alpha, c_alpha = 0.8, math.radians(1.0), 5e4
-    _, loads = slipping_wheel(mbs, alpha, c_alpha, mu=10.0, fz0=FZ / 2,
-                              load_exponent=n)
+def magic_formula(mbs, fz0=FZ, n=0.8, mu=1.2, shape=SHAPE):
+    curve = dict(mu=mu, load_exponent=n, stiffness=B_Y, shape=shape)
+    return mbs.MagicFormulaTire(fz0=fz0, longitudinal=dict(curve),
+                                lateral=dict(curve))
+
+
+def test_magic_formula_pure_side_slip(mbs):
+    mf = magic_formula(mbs)
+    d = 1.2 * FZ
+    for deg in (0.5, 3.0, 7.52, 15.0, 60.0):
+        alpha = math.radians(deg)
+        expect = d * math.sin(SHAPE * math.atan(B_Y * math.tan(alpha)))
+        assert mf.force(FZ, 0.0, alpha) == pytest.approx((0.0, -expect),
+                                                         rel=1e-12)
+    # The peak, the slope at zero slip, and the sliding level.
+    assert -mf.force(FZ, 0.0, PEAK)[1] == pytest.approx(d, rel=1e-12)
+    assert mf.cornering_stiffness(FZ) == pytest.approx(B_Y * SHAPE * d,
+                                                       rel=1e-12)
+    assert -mf.force(FZ, 0.0, math.radians(89.99))[1] == pytest.approx(
+        0.86 * d, rel=1e-3)
+
+
+def test_magic_formula_load_sensitivity(mbs):
+    n = 0.8
+    mf = magic_formula(mbs, fz0=FZ / 2, n=n)
+    assert mf.friction(FZ) == pytest.approx((1.2 * 2.0 ** (n - 1.0),) * 2,
+                                            rel=1e-12)
+    ratio = mf.cornering_stiffness(FZ) / mf.cornering_stiffness(FZ / 2)
+    assert ratio == pytest.approx(2.0 ** n, rel=1e-12)
+    assert mf.force(0.0, -1.0, 0.1) == (0.0, 0.0)
+
+
+def test_magic_formula_locked_wheel_slides_against_the_slip(mbs):
+    mf = magic_formula(mbs)
+    for alpha in (0.02, 0.1, 0.4):
+        fx, fy = mf.force(FZ, -1.0, alpha)
+        magnitude = math.hypot(fx, fy)
+        assert magnitude == pytest.approx(1.2 * FZ * 0.86, rel=1e-9)
+        assert -fy / magnitude == pytest.approx(math.sin(alpha), rel=1e-9)
+
+
+def test_magic_formula_demand(mbs):
+    mf = magic_formula(mbs)
+    for demand in (-2000.0, -100.0, 100.0, 2000.0):
+        fx, fy, kappa = mf.force_for_demand(FZ, demand, 0.03)
+        assert fx == pytest.approx(demand, abs=1e-6)
+        assert mf.force(FZ, kappa, 0.03) == pytest.approx((fx, fy))
+    # Past the peak the wheel locks or spins.
+    assert mf.force_for_demand(FZ, -1e5, 0.03)[2] == -1.0
+    assert mf.force_for_demand(FZ, 1e5, 0.03)[2] == 1.0
+
+
+@pytest.mark.parametrize("bad", [dict(shape=2.0), dict(curvature=1.5),
+                                 dict(mu=0.0), dict(stiffness=-1.0)])
+def test_magic_formula_rejects_bad_curves(mbs, bad):
+    curve = dict(mu=1.0, load_exponent=1.0, stiffness=10.0, shape=1.3)
+    curve.update(bad)
+    with pytest.raises(ValueError):
+        mbs.MagicFormulaTire(fz0=FZ, longitudinal=curve, lateral=curve)
+    with pytest.raises(KeyError):
+        mbs.MagicFormulaTire(fz0=FZ, longitudinal={"mux": 1.0},
+                             lateral={})
+
+
+def test_tire_force_uses_the_magic_formula(mbs):
+    mf = magic_formula(mbs)
+    alpha = math.radians(4.0)
+    tire, loads = slipping_wheel(mbs, alpha, 0.0, 1.0, magic_formula=mf)
+    state = mbs.get_tire_state(tire)
+    assert state["normal_force"] == pytest.approx(FZ, rel=1e-9)
     assert loads["force_j"][1] == pytest.approx(
-        -c_alpha * 2.0 ** n * alpha, rel=1e-9)
-    _, loads = slipping_wheel(mbs, math.radians(20.0), c_alpha, mu=1.2,
-                              fz0=FZ / 2, load_exponent=n)
-    assert loads["force_j"][1] == pytest.approx(
-        -1.2 * 2.0 ** (n - 1.0) * FZ, rel=1e-9)
+        mf.force(FZ, 0.0, alpha)[1], rel=1e-9)
 
 
-@pytest.mark.parametrize("deg", [0.2, 1.0, 2.0])
-def test_brush_curve(mbs, deg):
-    alpha, c_alpha, mu = math.radians(deg), 5e4, 1.0
-    _, loads = slipping_wheel(mbs, alpha, c_alpha, mu, brush=True)
-    s = c_alpha * math.tan(alpha)
-    d = mu * FZ
-    expect = -(s - s * s / (3 * d) + s ** 3 / (27 * d * d))
-    assert loads["force_j"][1] == pytest.approx(expect, rel=1e-9)
-
-
-def test_brush_curve_slides_past_the_sliding_angle(mbs):
-    c_alpha, mu = 5e4, 1.0
-    sliding = math.atan(3 * mu * FZ / c_alpha)
-    _, loads = slipping_wheel(mbs, 1.01 * sliding, c_alpha, mu, brush=True)
-    assert loads["force_j"][1] == pytest.approx(-mu * FZ, rel=1e-9)
-    # The small-slip slope is C_alpha.
-    _, loads = slipping_wheel(mbs, 1e-5, c_alpha, mu, brush=True)
-    assert loads["force_j"][1] == pytest.approx(-c_alpha * math.tan(1e-5),
-                                                rel=1e-4)
+def test_longitudinal_demand_of_the_magic_formula_tire(mbs):
+    mf = magic_formula(mbs)
+    alpha = math.radians(3.0)
+    _, loads = slipping_wheel(mbs, alpha, 0.0, 1.0, magic_formula=mf,
+                              demand=-0.6)
+    fx, fy, _ = mf.force_for_demand(FZ, -0.6 * FZ, alpha)
+    assert loads["force_j"][0] == pytest.approx(-0.6 * FZ, rel=1e-9)
+    assert loads["force_j"][1] == pytest.approx(fy, rel=1e-9)
+    # A demand past the peak locks the wheel.
+    _, loads = slipping_wheel(mbs, alpha, 0.0, 1.0, magic_formula=mf,
+                              demand=-1.5)
+    locked = mf.force(FZ, -1.0, alpha)
+    assert loads["force_j"][0] == pytest.approx(locked[0], rel=1e-9)
+    assert loads["force_j"][1] == pytest.approx(locked[1], rel=1e-9)
 
 
 def test_longitudinal_demand_keeps_the_friction_circle(mbs):
@@ -158,11 +223,6 @@ def test_longitudinal_demand_keeps_the_friction_circle(mbs):
     assert loads["force_j"][1] == pytest.approx(-0.8 * FZ, rel=1e-9)
     state = mbs.get_tire_state(tire)
     assert state["longitudinal_force"] == pytest.approx(-0.6 * FZ, rel=1e-9)
-    # A demand above the friction is capped at mu F_z.
-    _, loads = slipping_wheel(mbs, math.radians(15.0), 5e4, mu=1.0,
-                              demand=-1.5)
-    assert loads["force_j"][0] == pytest.approx(-FZ, rel=1e-9)
-    assert loads["force_j"][1] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_relaxation_lags_over_the_rolled_distance(mbs):

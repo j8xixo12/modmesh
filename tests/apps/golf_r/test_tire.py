@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 from solvcon.apps.golf_r.tire import (
     Tire,
+    ac_tire,
     force,
     force_for_demand,
     friction_limit,
@@ -45,14 +46,16 @@ class TireTest(unittest.TestCase):
 
     def test_locked_wheel_force_follows_slip_velocity(self):
         # A locked wheel slides; the force points along the sliding
-        # velocity (Pacejka 2012, ch. 3), so |Fy| / |F| = sin(alpha).
-        # The friction-circle clip gave 0.571 at alpha = 0.05 rad.
+        # velocity (Pacejka 2012, ch. 3), so |Fy| / |F| = sin(alpha), at
+        # the sliding level D sin(C pi / 2) of the Magic Formula.  The
+        # friction-circle clip gave 0.571 at alpha = 0.05 rad.
         tire = Tire()
+        sliding = math.sin(0.5 * math.pi * tire.shape)
         for alpha in (0.02, 0.05, 0.1, 0.3):
             fx, fy = force(tire, 4000, -1, alpha)
             magnitude = math.hypot(fx, fy)
             self.assertAlmostEqual(
-                magnitude, friction_limit(tire, 4000), places=6
+                magnitude, friction_limit(tire, 4000) * sliding, places=6
             )
             self.assertAlmostEqual(-fy / magnitude, math.sin(alpha), 12)
             self.assertLess(fx, 0)
@@ -68,6 +71,36 @@ class TireTest(unittest.TestCase):
         fx, fy, kappa = force_for_demand(tire, 4000, -1e5, 0.03)
         self.assertEqual(kappa, -1)
         np.testing.assert_allclose(force(tire, 4000, -1, 0.03), [fx, fy])
+
+    def test_ac_tire_reproduces_the_ac_peak_and_falloff(self):
+        section = {
+            'FZ0': '2939', 'DY_REF': '1.28', 'DX_REF': '1.30',
+            'LS_EXPY': '0.8074', 'LS_EXPX': '0.8756',
+            'FRICTION_LIMIT_ANGLE': '7.52', 'FALLOFF_LEVEL': '0.86',
+            'CX_MULT': '1.04', 'RELAXATION_LENGTH': '0.072',
+        }
+        tire, notes = ac_tire(section)
+        peak = math.radians(7.52)
+        # The peak is DY_REF FZ0 at FRICTION_LIMIT_ANGLE.
+        self.assertAlmostEqual(-force(tire, 2939, 0, peak)[1], 1.28 * 2939, 6)
+        for delta in (-0.002, 0.002):
+            self.assertLess(
+                -force(tire, 2939, 0, peak + delta)[1], 1.28 * 2939
+            )
+        # The sliding level is FALLOFF_LEVEL of the peak.
+        self.assertAlmostEqual(
+            -force(tire, 2939, 0, math.radians(89.99))[1] / (1.28 * 2939),
+            0.86,
+            3,
+        )
+        # mu(F_z) = DY_REF (F_z / FZ0)^(LS_EXPY - 1).
+        self.assertAlmostEqual(
+            friction_limit(tire, 2 * 2939) / (2 * 2939),
+            1.28 * 2**(0.8074 - 1),
+            12,
+        )
+        self.assertEqual(tire.relaxation_length, 0.072)
+        self.assertTrue(notes)
 
     def test_relaxation_length_is_passenger_car_value(self):
         # Pacejka 2012, ch. 7: about 0.3 m to 0.6 m for passenger tires.

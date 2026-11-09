@@ -351,16 +351,13 @@ void TireForce::set_road(DriveFunction height, DriveFunction slope)
     m_moving_road = true;
 }
 
-void TireForce::set_slip_model(double fz0, double load_exponent, bool brush, double relaxation_length)
+void TireForce::set_relaxation_length(double length)
 {
-    if (fz0 < 0.0 || relaxation_length < 0.0)
+    if (length < 0.0)
     {
-        throw std::invalid_argument("TireForce: fz0 and relaxation_length must not be negative");
+        throw std::invalid_argument("TireForce: the relaxation length must not be negative");
     }
-    m_fz0 = fz0;
-    m_load_exponent = load_exponent;
-    m_brush = brush;
-    m_relaxation = relaxation_length;
+    m_relaxation = length;
 }
 
 void TireForce::commit()
@@ -416,7 +413,7 @@ void TireForce::compute()
     Vector3 hdir = cross(s, n);
     double const hn = norm(hdir);
     Vector3 force = m_fz * n;
-    if (hn > 1e-9 && m_c_alpha > 0.0)
+    if (hn > 1e-9 && (m_mf || m_c_alpha > 0.0))
     {
         hdir /= hn;
         Vector3 const l = cross(n, hdir);
@@ -434,36 +431,18 @@ void TireForce::compute()
             double const x = std::fabs(vh) * std::max(0.0, m_time - m_time_committed);
             m_alpha_force = m_alpha + (m_alpha_committed - m_alpha) * std::exp(-x / m_relaxation);
         }
-        double c_alpha = m_c_alpha;
-        double mu = m_mu;
-        if (m_fz0 > 0.0)
+        if (m_mf)
         {
-            double const ratio = m_fz / m_fz0;
-            c_alpha *= std::pow(ratio, m_load_exponent);
-            mu *= std::pow(ratio, m_load_exponent - 1.0);
-        }
-        double const cap = mu * m_fz;
-        m_fx = std::max(-cap, std::min(cap, m_fx_ratio * m_fz));
-        double const cap_y = std::sqrt(std::max(0.0, cap * cap - m_fx * m_fx));
-        if (m_brush)
-        {
-            double const sl = c_alpha * std::tan(m_alpha_force);
-            if (cap_y <= 0.0)
-            {
-                m_fy = 0.0;
-            }
-            else if (std::fabs(sl) >= 3.0 * cap_y)
-            {
-                m_fy = -std::copysign(cap_y, sl);
-            }
-            else
-            {
-                m_fy = -(sl - sl * std::fabs(sl) / (3.0 * cap_y) + sl * sl * sl / (27.0 * cap_y * cap_y));
-            }
+            MagicFormulaTire::Force const f = m_mf->force_for_demand(m_fz, m_fx_ratio * m_fz, m_alpha_force);
+            m_fx = f.fx;
+            m_fy = f.fy;
         }
         else
         {
-            m_fy = std::max(-cap_y, std::min(cap_y, -c_alpha * m_alpha_force));
+            double const cap = m_mu * m_fz;
+            m_fx = std::max(-cap, std::min(cap, m_fx_ratio * m_fz));
+            double const cap_y = std::sqrt(std::max(0.0, cap * cap - m_fx * m_fx));
+            m_fy = std::max(-cap_y, std::min(cap_y, -m_c_alpha * m_alpha_force));
         }
         force += m_fy * l + m_fx * hdir;
     }

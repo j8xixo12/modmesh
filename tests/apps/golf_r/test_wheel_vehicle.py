@@ -32,8 +32,10 @@ class WheelVehicleTest(unittest.TestCase):
         np.testing.assert_array_equal(states[stop:, 3], 0)
         np.testing.assert_array_equal(states[stop:, 7:9], 0)
         self.assertEqual(states[stop, 0], states[-1, 0])
-        # Locked tires at mu about 1: distance near V^2 / (2 g).
-        distance = SPEED**2 / (2 * GRAVITY)
+        # Locked tires at mu about 1 slide at the sliding level sin(C pi /
+        # 2) of the Magic Formula: distance near V^2 / (2 g sin(C pi / 2)).
+        sliding = math.sin(0.5 * math.pi * TIRE.shape)
+        distance = SPEED**2 / (2 * GRAVITY * sliding)
         self.assertAlmostEqual(states[stop, 0] / distance, 1, delta=0.05)
 
     def test_brake_holds_a_wheel_at_rest(self):

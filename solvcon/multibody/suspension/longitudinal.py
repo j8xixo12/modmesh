@@ -254,13 +254,11 @@ def predicted_travel(mbs, vm, state, gravity=9.81):
     return np.array(travel), np.array(anti)
 
 
-def _capacity(vm, loads, nominal):
-    out = 0.0
-    for load in loads:
-        load = max(float(load), 0.0)
-        mu = vm.mu * (1.0 - vm.mu_sensitivity * (load / nominal - 1.0))
-        out += max(mu, 0.0) * load
-    return out
+def _capacity(vm, front, loads):
+    """The longitudinal peak force (N) of an axle's tires."""
+    tire = vm.tire(front)
+    return sum(tire.friction(max(float(fz), 0.0))[0] * max(float(fz), 0.0)
+               for fz in loads)
 
 
 def brake_balance(mbs, vm, brake_bias, decelerations_g=None,
@@ -274,8 +272,6 @@ def brake_balance(mbs, vm, brake_bias, decelerations_g=None,
     """
     if decelerations_g is None:
         decelerations_g = list(np.round(np.arange(0.0, 1.61, 0.05), 3))
-    w_f, w_r = car.axle_loads(vm, gravity)
-    nominal = (0.5 * w_f, 0.5 * w_r)
     state = steady_state(mbs, vm, [-d for d in decelerations_g],
                          brake_bias=brake_bias,
                          inboard_brakes=inboard_brakes, gravity=gravity)
@@ -283,8 +279,8 @@ def brake_balance(mbs, vm, brake_bias, decelerations_g=None,
     use, ideal = [], []
     for k, d in enumerate(decelerations_g):
         loads = state["loads"][k]
-        cap_f = _capacity(vm, loads[:2], nominal[0])
-        cap_r = _capacity(vm, loads[2:], nominal[1])
+        cap_f = _capacity(vm, True, loads[:2])
+        cap_r = _capacity(vm, False, loads[2:])
         use.append((brake_bias * total * d / cap_f,
                     (1.0 - brake_bias) * total * d / cap_r))
         ideal.append(cap_f / (cap_f + cap_r))
@@ -305,8 +301,6 @@ def traction_limit(mbs, vm, drive_split=0.0, accelerations_g=None,
     """
     if accelerations_g is None:
         accelerations_g = list(np.round(np.arange(0.0, 1.21, 0.05), 3))
-    w_f, w_r = car.axle_loads(vm, gravity)
-    nominal = (0.5 * w_f, 0.5 * w_r)
     state = steady_state(mbs, vm, accelerations_g, drive_split=drive_split,
                          gravity=gravity)
     total = state["mass"] * gravity
@@ -314,9 +308,9 @@ def traction_limit(mbs, vm, drive_split=0.0, accelerations_g=None,
     for k, a in enumerate(accelerations_g):
         loads = state["loads"][k]
         use.append((drive_split * total * a
-                    / _capacity(vm, loads[:2], nominal[0]),
+                    / _capacity(vm, True, loads[:2]),
                     (1.0 - drive_split) * total * a
-                    / _capacity(vm, loads[2:], nominal[1])))
+                    / _capacity(vm, False, loads[2:])))
     use = np.array(use)
     limit, spins = _crossing(accelerations_g, use)
     return {"accel": np.asarray(accelerations_g, dtype="float64"),

@@ -17,10 +17,12 @@
 #include <solvcon/multibody/Body.hpp>
 #include <solvcon/multibody/DriveFunction.hpp>
 #include <solvcon/multibody/kinematics.hpp>
+#include <solvcon/multibody/TireModel.hpp>
 
 #include <solvcon/buffer/buffer.hpp>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace solvcon
@@ -304,8 +306,13 @@ public:
      * the plane normal, only in compression.
      */
     void set_road(DriveFunction height, DriveFunction slope);
-    /// Load sensitivity (fz0 > 0 turns it on), brush curve, relaxation.
-    void set_slip_model(double fz0, double load_exponent, bool brush, double relaxation_length);
+    /**
+     * The Magic Formula slip model; it replaces the linear-saturated side
+     * force of c_alpha and mu.
+     */
+    void set_magic_formula(MagicFormulaTire const & model) { m_mf = model; }
+    /// The relaxation length (m) of the slip angle; 0 turns the lag off.
+    void set_relaxation_length(double length);
     /// Longitudinal force demand F_x / F_z (+ drive, - brake).
     void set_longitudinal(double ratio) { m_fx_ratio = ratio; }
     /// Store the lagged slip angle at the end of an accepted step.
@@ -337,9 +344,7 @@ private:
     double m_fx = 0.0;
     double m_vh = 0.0;
     double m_deflection = 0.0;
-    double m_fz0 = 0.0;
-    double m_load_exponent = 1.0;
-    bool m_brush = false;
+    std::optional<MagicFormulaTire> m_mf;
     double m_relaxation = 0.0;
     double m_fx_ratio = 0.0;
     bool m_committed = false;

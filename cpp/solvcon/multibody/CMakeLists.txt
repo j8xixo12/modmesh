@@ -12,6 +12,7 @@ set(SOLVCON_MULTIBODY_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/CamProfile.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DriveFunction.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Joint.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TireModel.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ForceElement.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GearCoupler.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DynamicsSystem.hpp
@@ -25,6 +26,7 @@ set(SOLVCON_MULTIBODY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/CamProfile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DriveFunction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Joint.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TireModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ForceElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GearCoupler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DynamicsSystem.cpp

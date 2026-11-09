@@ -1697,10 +1697,24 @@ class SuspensionSession(object):
     VEHICLE_UNITS = {
         'wheelbase': "mm", 'sprung_mass': "kg", 'front_fraction': "",
         'cg_height': "mm", 'sprung_inertia': "kg m^2",
-        'cornering_stiffness': "N/deg", 'mu': "", 'shape': "",
-        'stiffness_load_sensitivity': "", 'mu_load_sensitivity': "",
-        'reference_load': "N", 'load_exponent': "", 'relaxation_length': "m",
+        'cornering_stiffness': "N/deg", 'mu': "", 'mu_x': "", 'shape': "",
+        'curvature': "", 'reference_load': "N", 'load_exponent': "",
+        'longitudinal_stiffness': "N", 'relaxation_length': "m",
+        'fz0': "N", 'stiffness': "",
     }
+
+    @staticmethod
+    def _tire_items(block, prefix=()):
+        """``(keys, value)`` of the numbers and lists of a tire block, the
+        nested ``magic_formula`` block too."""
+        out = []
+        for key, value in sorted(block.items()):
+            if isinstance(value, dict):
+                out += SuspensionSession._tire_items(value, prefix + (key,))
+            elif isinstance(value, (int, float, list)) \
+                    and not isinstance(value, bool):
+                out.append((prefix + (key,), value))
+        return out
 
     def _vehicle_outline(self):
         stem = self.vehicle_stem
@@ -1713,9 +1727,10 @@ class SuspensionSession(object):
                 rows.append((key.replace('_', ' '),
                              f"{data[key]} {self.VEHICLE_UNITS[key]}"
                              .strip()))
-        for key, value in sorted(data.get('tire', {}).items()):
-            rows.append((f"tire {key.replace('_', ' ')}",
-                         f"{value} {self.VEHICLE_UNITS.get(key, '')}"
+        for keys, value in self._tire_items(data.get('tire', {})):
+            name = " / ".join(k.replace('_', ' ') for k in keys)
+            rows.append((f"tire {name}",
+                         f"{value} {self.VEHICLE_UNITS.get(keys[-1], '')}"
                          .strip()))
         if stem in self.vehicle_dirty:
             rows.append(("state", "unsaved edits"))
@@ -1737,12 +1752,11 @@ class SuspensionSession(object):
             if key in data:
                 rows.append((key, ('__vehicle__', key),
                              self.VEHICLE_UNITS[key], json.dumps(data[key])))
-        for key, value in sorted(data.get('tire', {}).items()):
-            if isinstance(value, (int, float, list)) \
-                    and not isinstance(value, bool):
-                rows.append((f"tire / {key}", ('__vehicle__', 'tire', key),
-                             self.VEHICLE_UNITS.get(key, ""),
-                             json.dumps(value)))
+        for keys, value in self._tire_items(data.get('tire', {})):
+            rows.append((f"tire / {' / '.join(keys)}",
+                         ('__vehicle__', 'tire') + keys,
+                         self.VEHICLE_UNITS.get(keys[-1], ""),
+                         json.dumps(value)))
         return rows
 
     def edit_vehicle(self, path, text):

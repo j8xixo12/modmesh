@@ -22,6 +22,7 @@
 #include <solvcon/multibody/CamProfile.hpp>
 #include <solvcon/multibody/Body.hpp>
 #include <solvcon/multibody/Joint.hpp>
+#include <solvcon/multibody/TireModel.hpp>
 #include <solvcon/multibody/ForceElement.hpp>
 #include <solvcon/multibody/GearCoupler.hpp>
 #include <solvcon/multibody/DynamicsSystem.hpp>

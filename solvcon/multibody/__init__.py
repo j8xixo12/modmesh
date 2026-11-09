@@ -38,6 +38,7 @@ __all__ = [
     'GearCoupler',
     'PythonForce',
     'TireForce',
+    'MagicFormulaTire',
     'Bushing',
     'CamProfile',
     'DriveFunction',

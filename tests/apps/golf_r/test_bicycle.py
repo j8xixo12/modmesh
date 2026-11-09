@@ -24,16 +24,20 @@ CURVE = np.array([[800, 100], [8000, 100]], dtype='float64')
 
 class BicycleTest(unittest.TestCase):
     def test_full_braking_rear_load_uses_delivered_force(self):
-        # With mu = 1 and no load sensitivity, the locked axles deliver
-        # -m g; W_r = m g a / L + m a_x h / L with that a_x.  The old
+        # With mu = 1 and no load sensitivity, the locked axles slide and
+        # deliver -m g sin(C pi / 2), the sliding level of the Magic
+        # Formula; W_r = m g a / L + m a_x h / L with that a_x.  The old
         # requested-force transfer gave W_r = 28 N instead of 3070 N.
-        p, tire = Vehicle(), Tire(friction=1.0, load_sensitivity=0)
+        p, tire = Vehicle(), Tire(friction=1.0, load_exponent=1.0)
         state = [0, 0, 0, 120 / 3.6, 0, 0, 0]
         f = forces(p, state, 0, 1, 0, 7, CURVE, tire)
         weight = p.mass * GRAVITY
         ax = (f['front_x'] + f['rear_x'] - f['drag']) / p.mass
         self.assertAlmostEqual(ax, f['ax'], places=5)
-        self.assertAlmostEqual(f['front_x'] + f['rear_x'], -weight, 3)
+        sliding = math.sin(0.5 * math.pi * tire.shape)
+        self.assertAlmostEqual(
+            f['front_x'] + f['rear_x'], -weight * sliding, 3
+        )
         a = p.wheelbase * (1 - p.front_fraction)
         expected = weight * a / p.wheelbase + p.mass * ax * p.cg_height / (
             p.wheelbase
@@ -53,7 +57,8 @@ class BicycleTest(unittest.TestCase):
             CURVE,
         )
         self.assertLess(np.abs(states[:, 2]).max(), 0.01)
-        self.assertLess(states[-1, 3], 11)
+        # The locked tires slide at about 0.89 g (sin(C pi / 2), C = 1.3).
+        self.assertLess(states[-1, 3], 25 - 1.5 * 0.85 * GRAVITY)
 
     def test_axle_forces_come_from_golf_r_tire(self):
         p = Vehicle()
@@ -68,23 +73,27 @@ class BicycleTest(unittest.TestCase):
 
     def test_gillespie_steady_state_yaw_velocity_gain(self):
         # Gillespie, Fundamentals of Vehicle Dynamics (1992), ch. 6:
-        # r / delta = (V / L) / (1 + K V^2 / (57.3 L g)), K in deg/g.
+        # r / delta = (V / L) / (1 + K V^2 / (57.3 L g)), K in deg/g.  The
+        # cornering stiffness of each axle is at its wheel load (it grows
+        # with the load to the power n); the drag moves 122 N to the front.
         p, speed, steer = Vehicle(), 30.0, 0.002
-        weight = p.mass * GRAVITY
-        stiffness = 2 * TIRE.cornering_stiffness * math.pi / 180
-        gradient = (
-            weight * p.front_fraction / stiffness
-            - weight * (1 - p.front_fraction) / stiffness
-        )
-        expected = (speed / p.wheelbase) / (
-            1 + gradient * speed**2 / (57.3 * p.wheelbase * GRAVITY)
-        )
         # Integrate the lateral states at a fixed forward speed.
         state = np.array([0, 0, 0, speed, 0, 0, 0], dtype='float64')
         for _ in range(3000):
             rate = derivative(p, state, 0, 0, steer, 7, CURVE)
             state[4:6] += 0.001 * rate[4:6]
         rate = derivative(p, state, 0, 0, steer, 7, CURVE)
+        f = forces(p, state, 0, 0, steer, 7, CURVE)
+        weight = p.mass * GRAVITY
+        w_f, w_r = weight * p.front_fraction, weight * (1 - p.front_fraction)
+        c_f, c_r = (
+            2 * TIRE.model.cornering_stiffness(load / 2) * math.pi / 180
+            for load in (f['front_load'], f['rear_load'])
+        )
+        gradient = w_f / c_f - w_r / c_r
+        expected = (speed / p.wheelbase) / (
+            1 + gradient * speed**2 / (57.3 * p.wheelbase * GRAVITY)
+        )
         self.assertLess(np.abs(rate[4:6]).max(), 1e-6)
         self.assertAlmostEqual(state[5] / steer / expected, 1, delta=0.005)
 

@@ -134,12 +134,12 @@ def test_step_steer_steady_state_relation(road_car, step_runs, speed):
     lhs = st["steer"][0] - st["steer"][1]
     rhs = road_car.wheelbase * st["yaw_rate"] / st["speed"] \
         + (w_f / c_f - w_r / c_r) * st["lateral_acceleration"] / G
-    # Unresolved: the four-wheel model needs 0.5 percent (15 m/s), 1 percent
-    # (20 m/s), and 3 percent (30 m/s) more steer than the bicycle relation
-    # for the road car; the measured slip angles times C_alpha are the
-    # axle side forces within 2 percent, so the residual is in the steer
-    # kinematics.  A car with no static toe meets it within 1 percent.
-    assert lhs == pytest.approx(rhs, rel=0.02 if speed <= 20.0 else 0.04)
+    # The axle steer weighs the wheel angles (with the static toe of the
+    # spin axis) by the cornering stiffness at the wheel loads: a
+    # load-sensitive tire turns the toe of an axle into a side force under
+    # load transfer.  The plain mean of the upright headings missed the
+    # toe: 5 percent at 20 m/s and 10 percent at 30 m/s with this tire.
+    assert lhs == pytest.approx(rhs, rel=0.01)
     # The run reached a steady state.
     r = runs[speed][1]["yaw_rate"]
     assert abs(r[-1] - r[-1000]) < 1e-3 * abs(r[-1])
@@ -154,9 +154,7 @@ def test_step_steer_yaw_gain(road_car, step_runs, speed):
     delta = car.kinematic_steer(multibody, road_car, rack)
     v = st["speed"]
     gain = v / (road_car.wheelbase + kus * v * v / G)
-    # The same residual as the steady-state relation at 30 m/s.
-    assert st["yaw_rate"] == pytest.approx(
-        gain * delta, rel=0.03 if speed <= 20.0 else 0.045)
+    assert st["yaw_rate"] == pytest.approx(gain * delta, rel=0.01)
     # An understeering car: below the neutral steer gain V / L.
     assert abs(st["yaw_rate"]) < abs(v / road_car.wheelbase * delta)
     assert kus > 0.0

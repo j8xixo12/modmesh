@@ -3,59 +3,37 @@
 
 """Construct and analyze an explicitly provisional four-corner vehicle."""
 
-import math
 from pathlib import Path
 
 import numpy as np
 
 from .suspension_candidate import cg_height, candidate, read_ini, tyre_section
+from .tire import ac_tire
 
 GRAVITY = 9.81
 #: Rack body mass (kg) of each front corner (assumed).
 RACK_MASS = 1.5
 
 
-def tire_data(data_dir, front_load, rear_load):
-    """The vehicle tire block from ``tyres.ini`` (AC tyre model v10).
+def tire_data(data_dir):
+    """The vehicle tire block from ``tyres.ini`` (AC tyre model v10): the
+    Magic Formula of :func:`.tire.ac_tire` per axle and the relaxation
+    length.
 
-    The AC friction is mu(F_z) = DY_REF (F_z / FZ0)^(LS_EXPY - 1).  The
-    brush model (Pacejka, Tire and Vehicle Dynamics, 2012, Sec. 3.2) peaks
-    at tan(alpha_sl) = 3 mu F_z / C_alpha, so the slip angle of the peak,
-    ``FRICTION_LIMIT_ANGLE``, gives C_alpha(F_z) = 3 mu(F_z) F_z /
-    tan(alpha_sl), proportional to F_z^LS_EXPY.  The engine tire takes the
-    values at the static loads with the exponent LS_EXPY, the brush curve,
-    and ``RELAXATION_LENGTH``.
-
-    :param front_load: static load (N) of one front tire
-    :param rear_load: static load (N) of one rear tire
-    :return: the ``tire`` block of a vehicle model (N/deg at the static
-        loads), with the load sensitivities linearized there for the
-        handling diagram
-    :rtype: dict
+    :return: the ``tire`` block of a vehicle model and the assumptions of
+        the mapping
+    :rtype: tuple
     """
-    out = {'cornering_stiffness': [], 'mu': [], 'relaxation_length': [],
-           'reference_load': [front_load, rear_load], 'brush': True}
-    exponents = []
-    for axle, load in (('front', front_load), ('rear', rear_load)):
-        t = tyre_section(axle, data_dir)
-        fz0, n = float(t['FZ0']), float(t['LS_EXPY'])
-        mu = float(t['DY_REF']) * (load / fz0) ** (n - 1.0)
-        peak = math.radians(float(t['FRICTION_LIMIT_ANGLE']))
-        c_alpha = 3.0 * mu * load / math.tan(peak)
-        out['cornering_stiffness'].append(c_alpha * math.pi / 180.0)
-        out['mu'].append(mu)
-        out['relaxation_length'].append(
-            float(t.get('RELAXATION_LENGTH', '0')))
-        exponents.append(n)
-    if max(exponents) - min(exponents) > 1e-12:
-        raise ValueError('tyres.ini: LS_EXPY differs between the axles')
-    out['load_exponent'] = exponents[0]
-    out['relaxation_length'] = float(np.mean(out['relaxation_length']))
-    # mu ~ F_z^(n-1), C_alpha ~ F_z^n: both linear sensitivities are 1 - n
-    # at the static load.
-    out['mu_load_sensitivity'] = 1.0 - exponents[0]
-    out['stiffness_load_sensitivity'] = 1.0 - exponents[0]
-    return out
+    block, lengths, assumptions = {'magic_formula': {}}, [], []
+    for axle in ('front', 'rear'):
+        tire, assumptions = ac_tire(tyre_section(axle, data_dir))
+        block['magic_formula'][axle] = tire.parameters()
+        lengths.append(tire.relaxation_length)
+    if max(lengths) - min(lengths) > 1e-12:
+        raise ValueError('tyres.ini: RELAXATION_LENGTH differs between the '
+                         'axles')
+    block['relaxation_length'] = lengths[0]
+    return block, assumptions
 
 
 def vehicle_data(data_dir):
@@ -87,8 +65,7 @@ def vehicle_data(data_dir):
     inertia = [sprung * (width ** 2 + tall ** 2) / 12.0,
                sprung * (tall ** 2 + length ** 2) / 12.0,
                sprung * (width ** 2 + length ** 2) / 12.0]
-    load_f = 0.5 * total * share * GRAVITY
-    load_r = 0.5 * total * (1.0 - share) * GRAVITY
+    tire, tire_notes = tire_data(data_dir)
     return {
         'name': 'Golf R (AC data)',
         'source': 'Assetto Corsa car.ini, suspensions.ini, tyres.ini',
@@ -99,15 +76,13 @@ def vehicle_data(data_dir):
         'front_fraction': front_sprung / sprung,
         'cg_height': 1000.0 * height,
         'sprung_inertia': inertia,
-        'tire': tire_data(data_dir, load_f, load_r),
+        'tire': tire,
         'assumptions': sorted(set(front['assumptions']
                                   + rear['assumptions'])) + [
             'sprung CG height from BASEY (radius - BASEY per axle)',
             'sprung inertia of the AC INERTIA box',
-            'cornering stiffness from FRICTION_LIMIT_ANGLE by the brush '
-            'model',
             f'{RACK_MASS} kg rack body per front corner',
-        ],
+        ] + tire_notes,
     }
 
 

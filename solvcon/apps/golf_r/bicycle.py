@@ -156,6 +156,23 @@ def vehicle_from_data(data_dir, vehicle=Vehicle()):
     return replace(vehicle, **drivetrain(data_dir), **shares(data_dir))
 
 
+def tire_from_data(data_dir):
+    """Return the :class:`.tire.Tire` of the AC ``tyres.ini`` (the default
+    compound) for both axles.
+
+    :raises ValueError: when the front and the rear tyre differ (the
+        models here use one tire)
+    """
+    from .suspension_candidate import tyre_section
+    from .tire import ac_tire
+
+    front, _ = ac_tire(tyre_section('front', data_dir))
+    rear, _ = ac_tire(tyre_section('rear', data_dir))
+    if front != rear:
+        raise ValueError('tyres.ini: the front and rear tyres differ')
+    return front
+
+
 def torque_curve(data_dir):
     points = []
     for line in (Path(data_dir) / 'power.lut').read_text().splitlines():

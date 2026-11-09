@@ -88,8 +88,12 @@ RATE=250000
 DAMP=400
 FZ0=3000
 LS_EXPY=0.8
+LS_EXPX=0.85
 DY_REF=1.1
+DX_REF=1.15
 FRICTION_LIMIT_ANGLE=8.0
+FALLOFF_LEVEL=0.86
+CX_MULT=1.0
 RELAXATION_LENGTH=0.3
 """
 
@@ -116,6 +120,24 @@ class CandidateTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
+
+    def test_one_tire_in_every_model(self):
+        # The multibody vehicle, the handling diagram, and the bicycle and
+        # wheel models use the same Magic Formula of the AC data.
+        from solvcon.apps.golf_r.bicycle import tire_from_data
+
+        vm = vc.vehicle_model(self.tmp.name)
+        tire = tire_from_data(self.tmp.name)
+        for front in (True, False):
+            engine = vm.tire(front)
+            self.assertEqual(engine.fz0, tire.model.fz0)
+            self.assertEqual(engine.lateral, tire.model.lateral)
+            self.assertEqual(engine.longitudinal, tire.model.longitudinal)
+        load, alpha = 3500.0, math.radians(3.0)
+        self.assertEqual(
+            car.tire_side_force(vm, True, alpha, load),
+            -tire.model.force(load, 0.0, alpha)[1])
+        self.assertEqual(vm.relaxation_length, tire.relaxation_length)
 
     def test_hardpoints_are_from_the_wheel_centre(self):
         # Car and tyre points share the origin: the lateral distance of a
@@ -195,12 +217,24 @@ class CandidateTest(unittest.TestCase):
             data['sprung_inertia'],
             np.array([1.6 ** 2 + 1.4 ** 2, 1.4 ** 2 + 4.3 ** 2,
                       1.6 ** 2 + 4.3 ** 2]) * sprung / 12.0, rtol=1e-12)
-        # The brush-model cornering stiffness at the static load.
-        load = 0.5 * 1500.0 * 0.6 * vc.GRAVITY
-        mu = 1.1 * (load / 3000.0) ** (0.8 - 1.0)
-        c_alpha = 3.0 * mu * load / math.tan(math.radians(8.0))
-        self.assertAlmostEqual(data['tire']['cornering_stiffness'][0],
-                               c_alpha * math.pi / 180.0, places=6)
+        # The Magic Formula of the tyre data: the peak DY_REF FZ0 at
+        # FRICTION_LIMIT_ANGLE, the sliding level FALLOFF_LEVEL.
+        mf = data['tire']['magic_formula']['front']
+        self.assertEqual(mf['fz0'], 3000.0)
+        lat = mf['lateral']
+        self.assertAlmostEqual(math.sin(0.5 * math.pi * lat['shape']), 0.86,
+                               places=12)
+        self.assertAlmostEqual(
+            lat['stiffness'] * math.tan(math.radians(8.0)),
+            math.tan(0.5 * math.pi / lat['shape']), places=12)
+        self.assertEqual((lat['mu'], lat['load_exponent']), (1.1, 0.8))
+        self.assertEqual(mf['longitudinal']['mu'], 1.15)
+        self.assertEqual(data['tire']['relaxation_length'], 0.3)
+        vm = vc.vehicle_model(self.tmp.name)
+        tire = vm.tire(True)
+        self.assertAlmostEqual(
+            -tire.force(3000.0, 0.0, math.radians(8.0))[1], 1.1 * 3000.0,
+            places=6)
 
     def test_step_steer_at_120_kmh_is_plausible(self):
         # 4 mm of rack takes this car to its friction limit: it must not

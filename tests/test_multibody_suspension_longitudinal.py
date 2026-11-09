@@ -38,9 +38,10 @@ def vm():
 
 @pytest.fixture(scope="module")
 def flat(vm):
-    out = copy.deepcopy(vm)
-    out.mu_sensitivity = 0.0
-    return out
+    """The car with load-insensitive friction (load exponent 1)."""
+    data = copy.deepcopy(vm.raw)
+    data["tire"]["load_exponent"] = 1.0
+    return car.VehicleModel(data, base_dir=car.DATA_DIR)
 
 
 CASES = {

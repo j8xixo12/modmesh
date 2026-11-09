@@ -242,6 +242,121 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapCamProfile
 
 }; /* end class WrapCamProfile */
 
+class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapMagicFormulaTire
+    : public WrapBase<WrapMagicFormulaTire, mb::MagicFormulaTire>
+{
+
+    using base_type = WrapBase<WrapMagicFormulaTire, mb::MagicFormulaTire>;
+    using wrapped_type = typename base_type::wrapped_type;
+    friend base_type;
+
+    static mb::MagicFormulaTire::Curve to_curve(py::dict const & d)
+    {
+        static char const * const keys[] = {"mu", "load_exponent", "stiffness", "shape", "curvature"};
+        for (auto const & item : d)
+        {
+            std::string const key = py::str(item.first);
+            bool known = false;
+            for (char const * k : keys)
+            {
+                known = known || key == k;
+            }
+            if (!known)
+            {
+                throw py::key_error("MagicFormulaTire: unknown curve key '" + key + "'");
+            }
+        }
+        mb::MagicFormulaTire::Curve c;
+        auto get = [&](char const * key, double fallback)
+        { return d.contains(key) ? d[key].cast<double>() : fallback; };
+        c.mu = get("mu", c.mu);
+        c.load_exponent = get("load_exponent", c.load_exponent);
+        c.stiffness = get("stiffness", c.stiffness);
+        c.shape = get("shape", c.shape);
+        c.curvature = get("curvature", c.curvature);
+        return c;
+    }
+
+    static py::dict to_dict(mb::MagicFormulaTire::Curve const & c)
+    {
+        py::dict d;
+        d["mu"] = c.mu;
+        d["load_exponent"] = c.load_exponent;
+        d["stiffness"] = c.stiffness;
+        d["shape"] = c.shape;
+        d["curvature"] = c.curvature;
+        return d;
+    }
+
+    WrapMagicFormulaTire(py::module & mod, char const * pyname, char const * pydoc)
+        : base_type(mod, pyname, pydoc)
+    {
+        (*this)
+            .def(
+                py::init(
+                    [](double fz0, py::dict const & longitudinal, py::dict const & lateral)
+                    { return wrapped_type(fz0, to_curve(longitudinal), to_curve(lateral)); }),
+                py::arg("fz0"),
+                py::arg("longitudinal"),
+                py::arg("lateral"),
+                "fz0: the reference load (N); longitudinal and lateral: dicts of mu, load_exponent, "
+                "stiffness (B), shape (C), curvature (E)")
+            .def_property_readonly("fz0", &wrapped_type::fz0)
+            .def_property_readonly("longitudinal", [](wrapped_type const & self)
+                                   { return to_dict(self.longitudinal()); })
+            .def_property_readonly("lateral", [](wrapped_type const & self)
+                                   { return to_dict(self.lateral()); })
+            .def(
+                "force",
+                [](wrapped_type const & self, double fz, double slip_ratio, double slip_angle)
+                {
+                    auto const f = self.force(fz, slip_ratio, slip_angle);
+                    return py::make_tuple(f.fx, f.fy);
+                },
+                py::arg("fz"),
+                py::arg("slip_ratio"),
+                py::arg("slip_angle"),
+                "(F_x, F_y) in N at the load, the slip ratio, and the slip angle (rad); F_y opposes + slip")
+            .def(
+                "force_for_demand",
+                [](wrapped_type const & self, double fz, double demand, double slip_angle)
+                {
+                    auto const f = self.force_for_demand(fz, demand, slip_angle);
+                    return py::make_tuple(f.fx, f.fy, f.slip_ratio);
+                },
+                py::arg("fz"),
+                py::arg("demand"),
+                py::arg("slip_angle"),
+                "(F_x, F_y, kappa) that deliver the longitudinal force demand; beyond the peak the "
+                "wheel locks (braking) or spins (driving)")
+            .def(
+                "friction",
+                [](wrapped_type const & self, double fz)
+                { return py::make_tuple(self.friction(self.longitudinal(), fz), self.friction(self.lateral(), fz)); },
+                py::arg("fz"),
+                "(mu_x, mu_y): the peak force over the load")
+            .def(
+                "cornering_stiffness",
+                [](wrapped_type const & self, double fz)
+                { return self.slip_stiffness(self.lateral(), fz); },
+                py::arg("fz"),
+                "dF_y/dalpha at zero slip (N/rad)")
+            .def(
+                "longitudinal_stiffness",
+                [](wrapped_type const & self, double fz)
+                { return self.slip_stiffness(self.longitudinal(), fz); },
+                py::arg("fz"),
+                "dF_x/dkappa at zero slip (N)")
+            .def("__copy__", [](wrapped_type const & self)
+                 { return wrapped_type(self); })
+            .def("__deepcopy__", [](wrapped_type const & self, py::dict const &)
+                 { return wrapped_type(self); })
+            //
+            ;
+    }
+
+}; /* end class WrapMagicFormulaTire */
+
 class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapDriveFunction
     : public WrapBase<WrapDriveFunction, mb::DriveFunction>
 {
@@ -890,10 +1005,14 @@ void wrap_factories(py::module & mod)
         "global forces at the COM and torques about the COM; state = {r, v, p, w}");
     mod.def(
         "create_tire",
-        [](mb::BodyPtr road, mb::BodyPtr wheel, std::vector<double> const & spin_axis, double radius, double k, double c, double c_alpha, double mu, double road_z, py::object const & road_height, py::object const & road_slope, double fz0, double load_exponent, bool brush, double relaxation_length) -> mb::ForceElementPtr
+        [](mb::BodyPtr road, mb::BodyPtr wheel, std::vector<double> const & spin_axis, double radius, double k, double c, double c_alpha, double mu, double road_z, py::object const & road_height, py::object const & road_slope, py::object const & magic_formula, double relaxation_length) -> mb::ForceElementPtr
         {
             auto tire = std::make_shared<mb::TireForce>(std::move(road), std::move(wheel), to_vector3(spin_axis, "spin_axis"), radius, k, c, c_alpha, mu, road_z);
-            tire->set_slip_model(fz0, load_exponent, brush, relaxation_length);
+            if (!magic_formula.is_none())
+            {
+                tire->set_magic_formula(magic_formula.cast<mb::MagicFormulaTire>());
+            }
+            tire->set_relaxation_length(relaxation_length);
             if (!road_height.is_none() || !road_slope.is_none())
             {
                 mb::DriveFunction h = road_height.is_none() ? mb::DriveFunction::parameter(road_z) : road_height.cast<mb::DriveFunction>();
@@ -913,15 +1032,12 @@ void wrap_factories(py::module & mod)
         py::arg("road_z") = 0.0,
         py::arg("road_height") = py::none(),
         py::arg("road_slope") = py::none(),
-        py::arg("fz0") = 0.0,
-        py::arg("load_exponent") = 1.0,
-        py::arg("brush") = false,
+        py::arg("magic_formula") = py::none(),
         py::arg("relaxation_length") = 0.0,
         "Point-contact tire (Haug 12.5): spring-damper along the road normal without tension "
         "(the tire leaves the road), slip-angle lateral force -c_alpha*alpha capped by mu*Fz. "
-        "Options: fz0 > 0 makes c_alpha ~ (Fz/fz0)^load_exponent and mu ~ "
-        "(Fz/fz0)^(load_exponent-1) (values at fz0); brush uses the Fiala brush curve; "
-        "relaxation_length > 0 lags the slip angle over the rolled distance (call "
+        "Options: magic_formula (a MagicFormulaTire) replaces the linear-saturated side force "
+        "and turns the longitudinal demand into a slip ratio; relaxation_length > 0 lags the slip angle over the rolled distance (call "
         "commit_tire after each step). "
         "The road is the plane z = road_z, or, with road_height h(t) and road_slope b(t) "
         "(DriveFunctions), the effective plane through (x_w, y_w, h) with the normal "
@@ -977,7 +1093,8 @@ void wrap_factories(py::module & mod)
         },
         py::arg("tire"),
         py::arg("ratio"),
-        "Longitudinal force demand F_x/F_z of a tire (+ drive, - brake), at most mu; the "
+        "Longitudinal force demand F_x/F_z of a tire (+ drive, - brake). With a Magic Formula "
+        "the demand sets the slip ratio (combined slip); otherwise it is capped at mu and the "
         "side force keeps the rest of the friction circle.");
     mod.def(
         "create_rsda",
@@ -1033,6 +1150,7 @@ void wrap_multibody(pybind11::module & mod)
     WrapTireForce::commit(mod, "TireForce", "Point-contact tire");
     WrapBushing::commit(mod, "Bushing", "Linear 6x6 bushing");
     WrapCamProfile::commit(mod, "CamProfile", "Periodic cam profile");
+    WrapMagicFormulaTire::commit(mod, "MagicFormulaTire", "Reduced Magic Formula tire with theoretical-slip combined slip");
     WrapDriveFunction::commit(mod, "DriveFunction", "Time function C(t) of a driver");
     WrapDynamicsSystem::commit(mod, "DynamicsSystem", "Constrained multibody system");
     WrapModalResult::commit(mod, "ModalResult", "Result of modal_analysis()");
