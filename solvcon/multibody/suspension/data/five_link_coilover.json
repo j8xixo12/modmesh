@@ -107,33 +107,22 @@
     "free_length_offset": 0.0,
     "note": "spring points assumed (not in the source)",
     "damper": {
-      "kind": "adjustable",
-      "clicks": 32,
-      "bump_clicks": 12,
-      "rebound_clicks": 16,
-      "soft": {
-        "bump": [
-          1.0,
-          0.4
-        ],
-        "rebound": [
-          2.0,
-          0.8
-        ],
-        "knee": 100.0
-      },
-      "firm": {
-        "bump": [
-          3.5,
-          1.2
-        ],
-        "rebound": [
-          8.0,
-          2.5
-        ],
-        "knee": 100.0
-      },
-      "note": "N.s/mm low-speed and high-speed slopes, knee at 100 mm/s; click 0 is full soft (assumed curves)"
+      "kind": "table",
+      "velocity": [
+        -200.0,
+        -100.0,
+        0.0,
+        100.0,
+        200.0
+      ],
+      "force": [
+        -263.75,
+        -193.75,
+        0.0,
+        500.0,
+        665.0
+      ],
+      "note": "damper force (N) against shaft speed (mm/s, + rebound); a digressive street/track coilover curve of 1.94 / 5 N.s/mm (bump / rebound) below the 100 mm/s knee and 0.7 / 1.65 N.s/mm above it (assumed curve, no dyno data)"
     }
   },
   "stops": {

@@ -672,8 +672,8 @@ class SuspensionSession(object):
             'spring_rate': ((1.0, 500.0), 5.0, 1),
             'ride_height': ((-80.0, 60.0), 5.0, 1),
             'bump_stop_gap': ((5.0, 150.0), 5.0, 1),
-            'bump_clicks': ((0, clicks or 0), 1, 0),
-            'rebound_clicks': ((0, clicks or 0), 1, 0),
+            'bump_clicks': (clicks or (0, 0), 1, 0),
+            'rebound_clicks': (clicks or (0, 0), 1, 0),
             'damper_bump': ((0.0, 50.0), 0.5, 2),
             'damper_rebound': ((0.0, 50.0), 0.5, 2),
             'arb_rate': ((0.0, 500.0), 2.0, 1),
@@ -1629,7 +1629,8 @@ class SuspensionSession(object):
 
     #: The vehicle setup fields of the Vehicle tab (per axle).
     VEHICLE_FIELDS = ('spring_rate', 'arb_rate', 'ride_height',
-                      'bump_clicks', 'rebound_clicks')
+                      'damper_bump', 'damper_rebound', 'bump_clicks',
+                      'rebound_clicks')
 
     def vehicle_setup(self, stem):
         """``{"front": setup, "rear": setup}`` of a bundled vehicle (the

@@ -6,16 +6,20 @@
 models, the anti-roll bar on a direct-acting corner, and the handling
 diagram of the full vehicle.
 
-* The readouts at any setup (spring, ride height, clicks) are the engine:
+* The readouts at any setup (spring, ride height, damper) are the engine:
   the damped ride and wheel hop modes equal the modal analysis of the
   quarter car at its static travel, which equals the ride height setting.
 * The coilover models keep the validated geometry of their parents
   (``macpherson_front``: Yang 2019 against ADAMS; ``five_link_rear``:
   Grzyb & Kowalski 2001).
+* A click damper is its measured curves: a measured click gives its dyno
+  curve, a click between two interpolates them, a click outside the map
+  is an error; the old soft/firm interpolation is refused.
 * The bar roll stiffness of the axle rig equals k (d theta / d phi)^2 by
   virtual work, theta the bar twist and phi the roll.
 """
 
+import copy
 import math
 
 import numpy as np
@@ -40,7 +44,8 @@ def test_baseline_and_bad_setups():
     base = tuning.baseline(model)
     assert base == {"spring_rate": 60.0, "ride_height": 0.0,
                     "tire_rate": 230.0, "bump_stop_gap": 50.0,
-                    "bump_clicks": 12, "rebound_clicks": 16,
+                    "damper_bump": pytest.approx(2.25),
+                    "damper_rebound": pytest.approx(5.7),
                     "arb_rate": pytest.approx(1100.0 / DEG)}
     same = tuning.apply(model, base)
     assert same.spring_k == model.spring_k
@@ -56,28 +61,53 @@ def test_baseline_and_bad_setups():
     assert asym.spring_c == pytest.approx(3.5e3)
 
 
-def test_click_damper_runs_from_soft_to_firm():
-    model = CornerModel.load("macpherson_coilover")
-    spec = model.damper_spec
-    soft = tuning.apply(model, {"bump_clicks": 0, "rebound_clicks": 0})
-    firm = tuning.apply(model, {"bump_clicks": 32, "rebound_clicks": 32})
-    from solvcon.multibody.suspension.model import curve_slope
-    assert curve_slope(soft.damper_curve, -1e-9) == pytest.approx(
-        spec["soft"]["bump"][0] * 1e3)
-    assert curve_slope(firm.damper_curve, 1e-9) == pytest.approx(
-        spec["firm"]["rebound"][0] * 1e3)
+CLICK_MAP = {
+    "kind": "click_map",
+    "velocity": [-200.0, -100.0, 0.0, 100.0, 200.0],
+    "curves": {"0": [-200.0, -120.0, 0.0, 240.0, 330.0],
+               "10": [-300.0, -200.0, 0.0, 500.0, 680.0],
+               "20": [-420.0, -300.0, 0.0, 800.0, 1050.0]},
+    "bump_clicks": 10, "rebound_clicks": 10,
+}
+
+
+def _with_damper(spec):
+    raw = copy.deepcopy(CornerModel.load("macpherson_coilover").raw)
+    raw["spring"]["damper"] = spec
+    return CornerModel(raw)
+
+
+def test_click_damper_is_its_measured_curves():
+    from solvcon.multibody.suspension.model import damper_table
+    model = _with_damper(CLICK_MAP)
+    base = tuning.baseline(model)
+    assert (base["bump_clicks"], base["rebound_clicks"]) == (10, 10)
+    assert "damper_bump" not in base
+    assert tuning.click_range(model) == (0, 20)
+    # A measured click is its dyno curve, both sides.
+    _, forces = damper_table(dict(CLICK_MAP, bump_clicks=20,
+                                  rebound_clicks=0))
+    assert forces == [-420.0, -300.0, 0.0, 240.0, 330.0]
+    # Between two measured clicks: their interpolation.
+    firm = tuning.apply(model, {"rebound_clicks": 15})
+    assert firm.damper_curve[1][3] == pytest.approx(0.5 * (500 + 800))
+    with pytest.raises(ValueError):
+        tuning.apply(model, {"rebound_clicks": 21})
     ratios = [tuning.readouts(multibody, tuning.apply(
         model, {"rebound_clicks": c}), 400.0,
-        axle_roll=False)["damping_ratio_rebound"] for c in (0, 8, 16, 32)]
+        axle_roll=False)["damping_ratio_rebound"] for c in (0, 10, 20)]
     assert all(b > a for a, b in zip(ratios[:-1], ratios[1:]))
+    # The assumed soft/firm interpolation is gone.
+    with pytest.raises(ValueError, match="click_map"):
+        damper_table({"kind": "adjustable", "clicks": 32})
 
 
 @pytest.mark.parametrize("stem, setup", [
     ("macpherson_coilover", {}),
     ("macpherson_coilover", {"ride_height": -20.0, "spring_rate": 80.0}),
-    ("macpherson_coilover", {"ride_height": 15.0, "bump_clicks": 30,
-                             "rebound_clicks": 4}),
-    ("five_link_coilover", {"ride_height": -25.0, "rebound_clicks": 28}),
+    ("macpherson_coilover", {"ride_height": 15.0, "damper_bump": 4.0,
+                             "damper_rebound": 2.0}),
+    ("five_link_coilover", {"ride_height": -25.0, "damper_rebound": 7.25}),
 ])
 def test_readouts_equal_the_engine_at_ride_height(stem, setup):
     model = tuning.apply(CornerModel.load(stem), setup)

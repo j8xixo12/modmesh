@@ -103,33 +103,22 @@
     "free_length_offset": 0.0,
     "note": "coil spring seats hp59 (strut tube) and hp58 (top mount); rates assumed",
     "damper": {
-      "kind": "adjustable",
-      "clicks": 32,
-      "bump_clicks": 12,
-      "rebound_clicks": 16,
-      "soft": {
-        "bump": [
-          1.2,
-          0.5
-        ],
-        "rebound": [
-          2.4,
-          0.9
-        ],
-        "knee": 100.0
-      },
-      "firm": {
-        "bump": [
-          4.0,
-          1.4
-        ],
-        "rebound": [
-          9.0,
-          3.0
-        ],
-        "knee": 100.0
-      },
-      "note": "N.s/mm low-speed and high-speed slopes, knee at 100 mm/s; click 0 is full soft (assumed curves)"
+      "kind": "table",
+      "velocity": [
+        -200.0,
+        -100.0,
+        0.0,
+        100.0,
+        200.0
+      ],
+      "force": [
+        -308.75,
+        -225.0,
+        0.0,
+        570.0,
+        765.0
+      ],
+      "note": "damper force (N) against shaft speed (mm/s, + rebound); a digressive street/track coilover curve of 2.25 / 5.7 N.s/mm (bump / rebound) below the 100 mm/s knee and 0.837 / 1.95 N.s/mm above it (assumed curve, no dyno data)"
     }
   },
   "stops": {

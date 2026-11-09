@@ -23,14 +23,21 @@ MM = 1e-3
 def damper_table(spec):
     """The force-velocity table of a damper block, in SI.
 
-    An ``adjustable`` block is a click damper: ``clicks`` positions,
-    ``soft`` and ``firm`` asymmetric curves, and the settings
-    ``bump_clicks`` and ``rebound_clicks`` (0 is soft).
-    A ``table`` block lists the curve: ``velocity`` (mm/s, > 0 rebound) and
-    ``force`` (N, > 0 in rebound).  An ``asymmetric`` block gives the slopes
-    in N.s/mm: ``bump`` and ``rebound``, each one value (linear) or a pair
-    (low-speed and high-speed slope, a digressive curve), and ``knee``, the
-    speed (mm/s) where the slope changes.
+    A damper is a measured force-velocity curve (a dyno plot): force in N
+    against the shaft speed in mm/s.
+
+    * ``table``: ``velocity`` (mm/s, > 0 rebound) and ``force`` (N, > 0 in
+      rebound), the curve as written.
+    * ``asymmetric``: the slopes in N.s/mm, ``bump`` and ``rebound``, each
+      one value (linear) or a pair (low-speed and high-speed slope, a
+      digressive curve), and ``knee``, the speed (mm/s) where the slope
+      changes.
+    * ``click_map``: a click-adjustable damper given by its measured
+      curves: ``velocity`` (mm/s) and ``curves``, ``{click: forces (N)}``
+      of the clicks on the dyno, with the settings ``bump_clicks`` and
+      ``rebound_clicks``.  A click between two measured clicks
+      interpolates their forces.  The click numbers mean nothing by
+      themselves: only the measured curves of one damper define them.
 
     :param spec: the damper block of a model file
     :type spec: dict
@@ -40,28 +47,43 @@ def damper_table(spec):
     """
     kind = spec.get("kind", "asymmetric")
     if "adjustable" == kind:
-        # A click-adjustable damper: the bump and rebound slopes move from
-        # the soft curve (click 0) to the firm curve (the last click) with
-        # their own adjusters.
-        clicks = int(spec["clicks"])
-        if clicks < 1:
-            raise ValueError("damper: an adjustable damper needs clicks >= 1")
-        out = {"kind": "asymmetric",
-               "knee": spec["soft"].get("knee", 100.0)}
-        for side, key in (("bump", "bump_clicks"),
-                          ("rebound", "rebound_clicks")):
-            click = float(spec.get(key, 0))
-            if not 0.0 <= click <= clicks:
-                raise ValueError(f"damper: {key} is 0 to {clicks}")
-            w = click / clicks
+        raise ValueError(
+            "damper: the 'adjustable' kind (clicks between two assumed "
+            "curves) is removed; give the measured curves of the clicks "
+            "(kind 'click_map') or the curve in N against mm/s (kind "
+            "'table')")
+    if "click_map" == kind:
+        velocities = [float(v) * MM for v in spec["velocity"]]
+        curves = {int(k): [float(f) for f in v]
+                  for k, v in spec["curves"].items()}
+        if not curves:
+            raise ValueError("damper: a click map needs measured curves")
+        for click, forces in curves.items():
+            if len(forces) != len(velocities):
+                raise ValueError(f"damper: click {click} has "
+                                 f"{len(forces)} forces for "
+                                 f"{len(velocities)} velocities")
+        measured = sorted(curves)
 
-            def pair(value):
-                return value if isinstance(value, (list, tuple)) else \
-                    [value, value]
-            soft, firm = pair(spec["soft"][side]), pair(spec["firm"][side])
-            out[side] = [(1.0 - w) * a + w * b for a, b in zip(soft, firm)]
-        return damper_table(out)
-    if "table" == kind:
+        def at(click, k):
+            click = float(click)
+            if not measured[0] <= click <= measured[-1]:
+                raise ValueError(f"damper: click {click:g} is outside the "
+                                 f"measured clicks {measured[0]} to "
+                                 f"{measured[-1]}")
+            hi = next(c for c in measured if c >= click)
+            lo = max(c for c in measured if c <= click)
+            if hi == lo:
+                return curves[lo][k]
+            w = (click - lo) / (hi - lo)
+            return (1.0 - w) * curves[lo][k] + w * curves[hi][k]
+
+        bump = spec.get("bump_clicks", measured[0])
+        rebound = spec.get("rebound_clicks", measured[0])
+        forces = [at(bump, k) if v < 0.0 else
+                  (at(rebound, k) if v > 0.0 else 0.0)
+                  for k, v in enumerate(velocities)]
+    elif "table" == kind:
         velocities = [float(v) * MM for v in spec["velocity"]]
         forces = [float(f) for f in spec["force"]]
     elif "asymmetric" == kind:

@@ -14,9 +14,11 @@ A setup is a dict in the units of a setup sheet:
   (camber, roll center, motion ratio) moves along the K&C curves; the
   damper moves with it, so the stroke to the droop stop stays.
 * ``bump_stop_gap`` (mm): the travel from static to the bump stop.
-* ``bump_clicks``, ``rebound_clicks``: the adjusters of a click damper (0
-  is soft); or ``damper_bump`` and ``damper_rebound`` (N.s/mm at the
-  damper, the low-speed slopes) for a damper without clicks.
+* ``damper_bump`` and ``damper_rebound`` (N.s/mm at the damper shaft, the
+  low-speed slopes of the force-velocity curve): each scales its side of
+  the curve.  A damper with a measured click map (``click_map``) takes
+  ``bump_clicks`` and ``rebound_clicks`` instead: clicks are defined only
+  by the dyno curves of that damper.
 * ``arb_rate`` (N m/deg): the anti-roll bar torsion rate, when the corner
   has a bar.
 * ``tire_rate`` (N/mm): the tire vertical rate (pressure).
@@ -66,7 +68,7 @@ FIELDS = (
 
 def _adjustable(model):
     spec = model.damper_spec
-    return spec is not None and "adjustable" == spec.get("kind")
+    return spec is not None and "click_map" == spec.get("kind")
 
 
 def baseline(model):
@@ -96,8 +98,12 @@ def baseline(model):
 
 
 def click_range(model):
-    """The number of clicks of the damper, or None without clicks."""
-    return int(model.damper_spec["clicks"]) if _adjustable(model) else None
+    """The measured clicks ``(first, last)`` of a click map damper, or
+    None without clicks."""
+    if not _adjustable(model):
+        return None
+    clicks = sorted(int(k) for k in model.damper_spec["curves"])
+    return clicks[0], clicks[-1]
 
 
 def apply(model, setup):

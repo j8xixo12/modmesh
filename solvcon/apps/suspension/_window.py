@@ -966,8 +966,14 @@ class VehicleTab(QWidget):
         'spring_rate': ("spring rate", " N/mm", (1.0, 500.0), 5.0, 1),
         'arb_rate': ("anti-roll bar", " N m/deg", (0.0, 500.0), 2.0, 1),
         'ride_height': ("ride height", " mm", (-80.0, 60.0), 5.0, 1),
-        'bump_clicks': ("damper bump", " clicks", (0, 32), 1, 0),
-        'rebound_clicks': ("damper rebound", " clicks", (0, 32), 1, 0),
+        'damper_bump': ("damper bump, low speed", " N.s/mm", (0.0, 50.0),
+                        0.1, 2),
+        'damper_rebound': ("damper rebound, low speed", " N.s/mm",
+                           (0.0, 50.0), 0.1, 2),
+        'bump_clicks': ("damper bump (measured map)", " clicks", (0, 64),
+                        1, 0),
+        'rebound_clicks': ("damper rebound (measured map)", " clicks",
+                           (0, 64), 1, 0),
     }
 
     def show_vehicle_setup(self, setups):

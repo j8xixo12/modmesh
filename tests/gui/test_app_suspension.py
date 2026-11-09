@@ -750,7 +750,7 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         feature = self._open()
         feature.on_library('macpherson_coilover')
         tab = feature.analysis.setup
-        self.assertIn('rebound_clicks', tab.spins)
+        self.assertIn('damper_rebound', tab.spins)
         self.assertEqual(400.0, tab.mass.value())
         tab.spins['ride_height'].setValue(-20.0)
         rows = {row[0]: row for row in tab.rows()}

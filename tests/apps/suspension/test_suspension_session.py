@@ -647,7 +647,7 @@ class SetupSheetTC(unittest.TestCase):
         sess.load_library('macpherson_coilover')
         keys = [row[0] for row in sess.setup_fields()]
         self.assertEqual(['spring_rate', 'ride_height', 'bump_stop_gap',
-                          'bump_clicks', 'rebound_clicks', 'arb_rate',
+                          'damper_bump', 'damper_rebound', 'arb_rate',
                           'tire_rate'], keys)
         self.assertTrue(sess.set_setup('spring_rate', 80.0))
         self.assertEqual(80e3, sess.model().spring_k)
@@ -663,8 +663,8 @@ class SetupSheetTC(unittest.TestCase):
         self.assertAlmostEqual(out['current']['ride_mode'], modes[0][1],
                                places=3)
         with self.assertRaises(ValueError):
-            sess.set_setup('bump_clicks', 40)
-        self.assertNotIn('bump_clicks', sess.setup)
+            sess.set_setup('damper_bump', -1.0)
+        self.assertNotIn('damper_bump', sess.setup)
         sess.set_setup_reference()
         again = sess.setup_readouts(400.0)
         self.assertAlmostEqual(again['current']['ride_frequency'],
@@ -735,7 +735,8 @@ class ModelEditTC(unittest.TestCase):
             rows = {row[0]: row for row in sess.editable('Forces', 'spring')}
             self.assertEqual(('spring', 'k'), rows['k'][1])
             self.assertEqual('N/mm', rows['k'][2])
-            self.assertIn('damper / rebound_clicks', rows)
+            self.assertIn('damper / force', rows)
+            self.assertEqual('N', rows['damper / force'][2])
             self.assertTrue(sess.edit_model(('spring', 'k'), '75'))
             self.assertEqual(75e3, sess.base_model.spring_k)
             self.assertTrue(sess.model_dirty)
