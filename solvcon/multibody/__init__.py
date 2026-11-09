@@ -73,6 +73,8 @@ __all__ = [
     'create_python_force',
     'get_force_element_loads',
     'get_tire_state',
+    'commit_tire',
+    'set_tire_longitudinal',
     'get_length_stop_state',
     'get_curve_damper_state',
     'modal_analysis',

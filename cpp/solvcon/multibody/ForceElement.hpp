@@ -271,6 +271,23 @@ private:
  * = road_z - c_z (> 0 in contact).  The vertical force F_z = max(0, k delta -
  * c dz/dt) acts along +z at c.  The lateral force along l has the slip angle
  * alpha = atan2(v_c . l, |v_c . h|), F_lat = -C_alpha alpha, |F_lat| <= mu F_z.
+ *
+ * Options (set_slip_model(), all off by default):
+ *
+ * - Load sensitivity with the reference load F_z0 > 0 and the exponent n:
+ *   C_alpha(F_z) = C_alpha (F_z/F_z0)^n, mu(F_z) = mu (F_z/F_z0)^(n-1), the
+ *   AC tyre form; c_alpha and mu are the values at F_z0.
+ * - The brush (Fiala) side force (Pacejka, Tire and Vehicle Dynamics, 2012,
+ *   Sec. 3.2.2) in place of the clipped line: with s = C_alpha tan(alpha)
+ *   and D = mu_y F_z, F = -(s - s|s|/(3D) + s^3/(27D^2)) up to
+ *   |s| = 3D, then -D sign(s).
+ * - The relaxation length sigma > 0: the slip angle of the force lags the
+ *   kinematic one, d(alpha')/dx = (alpha - alpha')/sigma over the rolled
+ *   distance x.  The lag is exact for a constant alpha over one step from
+ *   the value that commit() stores after each accepted step.
+ * - A longitudinal force demand ratio r (set_longitudinal()): F_x = r F_z,
+ *   at most mu F_z, along the rolling direction; the side force keeps
+ *   mu_y F_z = sqrt((mu F_z)^2 - F_x^2) (the friction circle).
  */
 class TireForce
     : public ForceElement
@@ -287,10 +304,20 @@ public:
      * the plane normal, only in compression.
      */
     void set_road(DriveFunction height, DriveFunction slope);
+    /// Load sensitivity (fz0 > 0 turns it on), brush curve, relaxation.
+    void set_slip_model(double fz0, double load_exponent, bool brush, double relaxation_length);
+    /// Longitudinal force demand F_x / F_z (+ drive, - brake).
+    void set_longitudinal(double ratio) { m_fx_ratio = ratio; }
+    /// Store the lagged slip angle at the end of an accepted step.
+    void commit();
     void compute() override;
     Vector3 point_j() const override { return m_contact; }
     double vertical_force() const { return m_fz; }
     double slip_angle() const { return m_alpha; }
+    /// The lagged slip angle of the side force (rad).
+    double force_slip_angle() const { return m_alpha_force; }
+    double lateral_force() const { return m_fy; }
+    double longitudinal_force() const { return m_fx; }
     /// Normal deflection (m); negative when the tire is off the road.
     double deflection() const { return m_deflection; }
     bool in_contact() const { return m_fz > 0.0; }
@@ -305,7 +332,19 @@ private:
     Vector3 m_contact;
     double m_fz = 0.0;
     double m_alpha = 0.0;
+    double m_alpha_force = 0.0;
+    double m_fy = 0.0;
+    double m_fx = 0.0;
+    double m_vh = 0.0;
     double m_deflection = 0.0;
+    double m_fz0 = 0.0;
+    double m_load_exponent = 1.0;
+    bool m_brush = false;
+    double m_relaxation = 0.0;
+    double m_fx_ratio = 0.0;
+    bool m_committed = false;
+    double m_alpha_committed = 0.0;
+    double m_time_committed = 0.0;
     bool m_moving_road = false;
     DriveFunction m_road_height = DriveFunction::parameter(0.0);
     DriveFunction m_road_slope = DriveFunction::parameter(0.0);

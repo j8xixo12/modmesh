@@ -890,9 +890,10 @@ void wrap_factories(py::module & mod)
         "global forces at the COM and torques about the COM; state = {r, v, p, w}");
     mod.def(
         "create_tire",
-        [](mb::BodyPtr road, mb::BodyPtr wheel, std::vector<double> const & spin_axis, double radius, double k, double c, double c_alpha, double mu, double road_z, py::object const & road_height, py::object const & road_slope) -> mb::ForceElementPtr
+        [](mb::BodyPtr road, mb::BodyPtr wheel, std::vector<double> const & spin_axis, double radius, double k, double c, double c_alpha, double mu, double road_z, py::object const & road_height, py::object const & road_slope, double fz0, double load_exponent, bool brush, double relaxation_length) -> mb::ForceElementPtr
         {
             auto tire = std::make_shared<mb::TireForce>(std::move(road), std::move(wheel), to_vector3(spin_axis, "spin_axis"), radius, k, c, c_alpha, mu, road_z);
+            tire->set_slip_model(fz0, load_exponent, brush, relaxation_length);
             if (!road_height.is_none() || !road_slope.is_none())
             {
                 mb::DriveFunction h = road_height.is_none() ? mb::DriveFunction::parameter(road_z) : road_height.cast<mb::DriveFunction>();
@@ -912,8 +913,16 @@ void wrap_factories(py::module & mod)
         py::arg("road_z") = 0.0,
         py::arg("road_height") = py::none(),
         py::arg("road_slope") = py::none(),
+        py::arg("fz0") = 0.0,
+        py::arg("load_exponent") = 1.0,
+        py::arg("brush") = false,
+        py::arg("relaxation_length") = 0.0,
         "Point-contact tire (Haug 12.5): spring-damper along the road normal without tension "
         "(the tire leaves the road), slip-angle lateral force -c_alpha*alpha capped by mu*Fz. "
+        "Options: fz0 > 0 makes c_alpha ~ (Fz/fz0)^load_exponent and mu ~ "
+        "(Fz/fz0)^(load_exponent-1) (values at fz0); brush uses the Fiala brush curve; "
+        "relaxation_length > 0 lags the slip angle over the rolled distance (call "
+        "commit_tire after each step). "
         "The road is the plane z = road_z, or, with road_height h(t) and road_slope b(t) "
         "(DriveFunctions), the effective plane through (x_w, y_w, h) with the normal "
         "(-sin b, 0, cos b). radius is the free radius; the wheel body origin is the wheel "
@@ -932,6 +941,9 @@ void wrap_factories(py::module & mod)
             d["deflection"] = tire->deflection();
             d["in_contact"] = tire->in_contact();
             d["slip_angle"] = tire->slip_angle();
+            d["force_slip_angle"] = tire->force_slip_angle();
+            d["lateral_force"] = tire->lateral_force();
+            d["longitudinal_force"] = tire->longitudinal_force();
             mb::Vector3 const p = tire->point_j();
             d["contact"] = std::vector<double>{p[0], p[1], p[2]};
             return d;
@@ -939,6 +951,34 @@ void wrap_factories(py::module & mod)
         py::arg("tire"),
         "Normal force (N), normal deflection (m), contact flag, slip angle (rad), and contact "
         "point of a tire at the last evaluation.");
+    mod.def(
+        "commit_tire",
+        [](mb::ForceElementPtr const & fe)
+        {
+            auto tire = std::dynamic_pointer_cast<mb::TireForce>(fe);
+            if (!tire)
+            {
+                throw py::type_error("commit_tire: not a tire");
+            }
+            tire->commit();
+        },
+        py::arg("tire"),
+        "Store the lagged slip angle of a tire at the end of an accepted step (relaxation).");
+    mod.def(
+        "set_tire_longitudinal",
+        [](mb::ForceElementPtr const & fe, double ratio)
+        {
+            auto tire = std::dynamic_pointer_cast<mb::TireForce>(fe);
+            if (!tire)
+            {
+                throw py::type_error("set_tire_longitudinal: not a tire");
+            }
+            tire->set_longitudinal(ratio);
+        },
+        py::arg("tire"),
+        py::arg("ratio"),
+        "Longitudinal force demand F_x/F_z of a tire (+ drive, - brake), at most mu; the "
+        "side force keeps the rest of the friction circle.");
     mod.def(
         "create_rsda",
         [](mb::BodyPtr body_i, mb::BodyPtr body_j, std::vector<double> const & axis_i, std::vector<double> const & axis_j, double k, double c, py::object const & torque) -> mb::ForceElementPtr

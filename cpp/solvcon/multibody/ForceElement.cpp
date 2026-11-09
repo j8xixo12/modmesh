@@ -351,6 +351,25 @@ void TireForce::set_road(DriveFunction height, DriveFunction slope)
     m_moving_road = true;
 }
 
+void TireForce::set_slip_model(double fz0, double load_exponent, bool brush, double relaxation_length)
+{
+    if (fz0 < 0.0 || relaxation_length < 0.0)
+    {
+        throw std::invalid_argument("TireForce: fz0 and relaxation_length must not be negative");
+    }
+    m_fz0 = fz0;
+    m_load_exponent = load_exponent;
+    m_brush = brush;
+    m_relaxation = relaxation_length;
+}
+
+void TireForce::commit()
+{
+    m_alpha_committed = m_alpha_force;
+    m_time_committed = m_time;
+    m_committed = true;
+}
+
 void TireForce::compute()
 {
     Vector3 const & rw = m_body_j->position();
@@ -370,6 +389,8 @@ void TireForce::compute()
     m_force_i = m_force_j = m_torque_i = m_torque_j = Vector3();
     m_fz = 0.0;
     m_alpha = 0.0;
+    m_fy = 0.0;
+    m_fx = 0.0;
     if (dn < 1e-9)
     {
         // A wheel plane parallel to the road has no defined contact point.
@@ -383,6 +404,7 @@ void TireForce::compute()
     m_deflection = dot(p0 - m_contact, n);
     if (m_deflection <= 0.0)
     {
+        m_alpha_force = m_committed ? m_alpha_committed : 0.0;
         return;
     }
     Vector3 const arm = m_contact - rw;
@@ -399,13 +421,51 @@ void TireForce::compute()
         hdir /= hn;
         Vector3 const l = cross(n, hdir);
         double const vh = dot(vc, hdir), vl = dot(vc, l);
+        m_vh = vh;
         if (std::fabs(vh) > 1e-6 || std::fabs(vl) > 1e-6)
         {
             m_alpha = std::atan2(vl, std::fabs(vh));
         }
-        double const cap = m_mu * m_fz;
-        double const lateral = std::max(-cap, std::min(cap, -m_c_alpha * m_alpha));
-        force += lateral * l;
+        // The slip angle of the force: the first-order lag over the
+        // distance rolled since the last commit.
+        m_alpha_force = m_alpha;
+        if (m_relaxation > 0.0 && m_committed)
+        {
+            double const x = std::fabs(vh) * std::max(0.0, m_time - m_time_committed);
+            m_alpha_force = m_alpha + (m_alpha_committed - m_alpha) * std::exp(-x / m_relaxation);
+        }
+        double c_alpha = m_c_alpha;
+        double mu = m_mu;
+        if (m_fz0 > 0.0)
+        {
+            double const ratio = m_fz / m_fz0;
+            c_alpha *= std::pow(ratio, m_load_exponent);
+            mu *= std::pow(ratio, m_load_exponent - 1.0);
+        }
+        double const cap = mu * m_fz;
+        m_fx = std::max(-cap, std::min(cap, m_fx_ratio * m_fz));
+        double const cap_y = std::sqrt(std::max(0.0, cap * cap - m_fx * m_fx));
+        if (m_brush)
+        {
+            double const sl = c_alpha * std::tan(m_alpha_force);
+            if (cap_y <= 0.0)
+            {
+                m_fy = 0.0;
+            }
+            else if (std::fabs(sl) >= 3.0 * cap_y)
+            {
+                m_fy = -std::copysign(cap_y, sl);
+            }
+            else
+            {
+                m_fy = -(sl - sl * std::fabs(sl) / (3.0 * cap_y) + sl * sl * sl / (27.0 * cap_y * cap_y));
+            }
+        }
+        else
+        {
+            m_fy = std::max(-cap_y, std::min(cap_y, -c_alpha * m_alpha_force));
+        }
+        force += m_fy * l + m_fx * hdir;
     }
     m_force_j = force;
     m_torque_j = cross(arm, force);
