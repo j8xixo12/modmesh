@@ -39,6 +39,8 @@ public:
         int wrap_t);
 
     void release() override;
+    bool updateGeometry(RSurface && surface);
+    void updateUniform(QRhiResourceUpdateBatch * batch, QMatrix4x4 const & view_proj) override;
     bool translucent() const override { return m_alpha_mode == 2 || RDrawable::translucent(); }
 
     bool hasGeometry() const { return m_indices.size() > 0; }
@@ -58,6 +60,7 @@ private:
 
     SimpleCollector<float> m_interleaved;
     SimpleCollector<uint32_t> m_indices;
+    bool m_geometry_dirty = false;
     QVector3D m_lo;
     QVector3D m_hi;
     QImage m_image;

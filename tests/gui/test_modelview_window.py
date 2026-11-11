@@ -77,4 +77,21 @@ class ModelViewerWindowTC(unittest.TestCase):
         self.assertIs(self.app.model, old_model)
         self.assertEqual(len(self.app.widget.objectNames()), 1)
 
+    def test_search_keeps_ancestors_and_visibility(self):
+        from PySide6.QtCore import Qt
+        self.app.load_path(self.path)
+        root = self.app.node_items[0]
+        wheel = self.app.node_items[1]
+        wheel.setCheckState(0, Qt.Unchecked)
+        self.app.search.setText('wheel')
+        self.assertFalse(root.isHidden())
+        self.assertFalse(wheel.isHidden())
+        self.assertEqual(Qt.Unchecked, wheel.checkState(0))
+        self.app.search.setText('no matching part')
+        self.assertFalse(self.app.search_empty.isHidden())
+        self.app.search.clear()
+        self.assertFalse(root.isHidden())
+        self.assertFalse(wheel.isHidden())
+        self.assertEqual(Qt.Unchecked, wheel.checkState(0))
+
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4 tw=79:

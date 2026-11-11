@@ -8,9 +8,35 @@ layout(std140, binding = 0) uniform buf
     vec4 color;
     vec4 lightDir;
     mat4 normalModel;
+    vec4 surface; // roughness, metallic, reserved, studio enabled.
 } ubuf;
 
 layout(location = 0) out vec4 fragColor;
+
+
+vec3 studioLight(vec3 base, vec3 normal, vec3 view)
+{
+    vec3 n = normalize(normal);
+    vec3 v = normalize(view);
+    if (dot(n, v) < 0.0) n = -n;
+    vec3 key = normalize(v + vec3(-0.6, -0.4, 0.9));
+    vec3 fill = normalize(v + vec3(0.8, 0.5, 0.2));
+    vec3 rim = normalize(-v + vec3(0.0, 0.0, 1.2));
+    float roughness = clamp(ubuf.surface.x, 0.06, 1.0);
+    float metal = ubuf.surface.y;
+    float power = mix(180.0, 4.0, roughness * roughness);
+    vec3 halfDir = normalize(key + v);
+    vec3 f0 = mix(vec3(0.04), base, metal);
+    vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, halfDir), 0.0), 5.0);
+    vec3 diffuse = base * (1.0 - metal * 0.75)
+        * (0.20 + 0.70 * max(dot(n, key), 0.0)
+            + 0.25 * max(dot(n, fill), 0.0));
+    vec3 specular = fresnel * pow(max(dot(n, halfDir), 0.0), power)
+        * (1.0 - roughness * 0.65) * 1.8;
+    vec3 edge = vec3(0.65, 0.76, 1.0) * max(dot(n, rim), 0.0)
+        * (0.08 + metal * 0.18);
+    return max(diffuse + specular + edge, vec3(0.0));
+}
 
 void main()
 {
@@ -20,5 +46,11 @@ void main()
     // fixed ambient floor so faces turned away from the light are not black.
     float ambient = 0.3;
     float diffuse = (1.0 - ambient) * abs(dot(n, l));
-    fragColor = vec4(ubuf.color.rgb * (ambient + diffuse), ubuf.color.a);
+    vec3 color = ubuf.color.rgb * (ambient + diffuse);
+    if (ubuf.surface.w > 0.5)
+    {
+        vec3 linear = pow(max(ubuf.color.rgb, vec3(0.0)), vec3(2.2));
+        color = pow(studioLight(linear, n, ubuf.lightDir.xyz), vec3(1.0 / 2.2));
+    }
+    fragColor = vec4(color, ubuf.color.a);
 }

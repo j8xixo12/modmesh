@@ -272,6 +272,10 @@ def _materials(materials, textures):
         cutoff = float(spec.get('alphaCutoff', 0.5))
         if not np.isfinite(cutoff) or not 0 <= cutoff <= 1:
             raise ValueError('Invalid material alphaCutoff')
+        for name in ('roughnessFactor', 'metallicFactor'):
+            factor = float(pbr.get(name, 1.0))
+            if not np.isfinite(factor) or not 0 <= factor <= 1:
+                raise ValueError(f'{name} must be a finite value in [0, 1]')
         info = pbr.get('baseColorTexture')
         if info is not None:
             reference(textures, info.get('index'), 'baseColorTexture')

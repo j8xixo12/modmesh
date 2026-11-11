@@ -283,6 +283,14 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRDomainWidget
                 py::arg("b"),
                 "Set the surface color of a named mesh object (components in "
                 "[0, 1]).")
+            .def("setSampleCount", &wrapped_type::setSampleCount, py::arg("count"))
+            .def("updateSurfaceObject", &wrapped_type::updateSurfaceObject, py::arg("name"), py::arg("positions"), py::arg("normals"), py::arg("indices"))
+            .def("setObjectMaterial", &wrapped_type::setObjectMaterial, py::arg("name"), py::arg("roughness"), py::arg("metallic"))
+            .def("setBackgroundColor", &wrapped_type::setBackgroundColor, py::arg("r"), py::arg("g"), py::arg("b"))
+            .def_property_readonly("backgroundColor", [](wrapped_type const & self)
+                                   {
+                                       QColor const color = self.backgroundColor();
+                                       return py::make_tuple(color.redF(), color.greenF(), color.blueF()); })
             .def("objectNames", &wrapped_type::objectNames)
             .def("showMesh", &wrapped_type::showMesh, py::arg("show"))
             .def("setMeshOpacity", &wrapped_type::setMeshOpacity, py::arg("opacity"))

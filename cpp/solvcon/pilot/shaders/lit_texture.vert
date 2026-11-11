@@ -10,6 +10,7 @@ layout(std140, binding = 0) uniform buf
     vec4 color;
     vec4 lightDir;
     mat4 normalModel;
+    vec4 surface; // roughness, metallic, reserved, studio enabled.
 } ubuf;
 
 layout(location = 0) out vec3 v_normal;

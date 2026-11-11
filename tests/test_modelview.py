@@ -59,6 +59,27 @@ def load(tmp_path, mutate=None, data=None):
     return _gltf.load_glb(path)
 
 
+def test_material_factors_survive_scene_instancing(tmp_path):
+    def material(doc):
+        doc['materials'] = [dict(pbrMetallicRoughness=dict(
+            roughnessFactor=0.25, metallicFactor=0.8))]
+        doc['meshes'][0]['primitives'][0]['material'] = 0
+    items = _scene.surfaces(load(tmp_path, material))
+    assert len(items) == 2
+    for item in items:
+        assert item.roughness == 0.25
+        assert item.metallic == 0.8
+
+
+@pytest.mark.parametrize('value', [-0.1, 1.1, float('nan'), float('inf')])
+def test_invalid_material_factors_rejected_before_scene_load(tmp_path, value):
+    def material(doc):
+        doc['materials'] = [dict(pbrMetallicRoughness=dict(
+            roughnessFactor=value))]
+    with pytest.raises(ValueError, match='roughnessFactor'):
+        load(tmp_path, material)
+
+
 def test_shared_mesh_instances_and_duplicate_names(tmp_path):
     model = load(tmp_path)
     items = _scene.surfaces(model)

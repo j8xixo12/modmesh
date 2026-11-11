@@ -390,6 +390,29 @@ void RDomainWidget::addSurfaceObject(
     installSurface(name, std::make_unique<RSurface>(positions, normals, indices));
 }
 
+void RDomainWidget::updateSurfaceObject(
+    std::string const & name,
+    SimpleArray<float> const & positions,
+    SimpleArray<float> const & normals,
+    SimpleArray<uint32_t> const & indices)
+{
+    auto surface = std::make_unique<RSurface>(positions, normals, indices);
+    auto it = m_objects.find(name);
+    if (it != m_objects.end())
+    {
+        auto * current = dynamic_cast<RSurface *>(it->second.drawable);
+        if (current && current->updateGeometry(std::move(*surface)))
+        {
+            it->second.lo = current->bboxLo();
+            it->second.hi = current->bboxHi();
+            rebuildObjectBounds();
+            update();
+            return;
+        }
+    }
+    installSurface(name, std::move(surface));
+}
+
 void RDomainWidget::addTexturedSurfaceObject(
     std::string const & name,
     SimpleArray<float> const & positions,
@@ -642,6 +665,30 @@ void RDomainWidget::setObjectColor(std::string const & name, float r, float g, f
         it->second.drawable->setColor(QVector4D(r, g, b, 1.0f));
         update();
     }
+}
+
+void RDomainWidget::setObjectMaterial(std::string const & name, float roughness, float metallic)
+{
+    if (!std::isfinite(roughness) || !std::isfinite(metallic) || roughness < 0.0f || roughness > 1.0f || metallic < 0.0f || metallic > 1.0f)
+    {
+        throw std::invalid_argument("Material roughness and metallic must be finite values in [0, 1]");
+    }
+    auto const it = m_objects.find(name);
+    if (it != m_objects.end())
+    {
+        it->second.drawable->setSurface(roughness, metallic);
+        update();
+    }
+}
+
+void RDomainWidget::setBackgroundColor(float r, float g, float b)
+{
+    if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(b) || r < 0.0f || r > 1.0f || g < 0.0f || g > 1.0f || b < 0.0f || b > 1.0f)
+    {
+        throw std::invalid_argument("Background color must have finite components in [0, 1]");
+    }
+    m_background_color = QColor::fromRgbF(r, g, b);
+    update();
 }
 
 std::vector<std::string> RDomainWidget::objectNames() const
@@ -2470,7 +2517,7 @@ void RDomainWidget::render(QRhiCommandBuffer * cb)
 
     QColor const clear_color = m_transparent_capture
                                    ? QColor::fromRgbF(1.0f, 1.0f, 1.0f, 0.0f)
-                                   : QColor::fromRgbF(1.0f, 1.0f, 1.0f, 1.0f);
+                                   : m_background_color;
     QRhiDepthStencilClearValue const ds_clear(1.0f, 0);
 
     cb->beginPass(renderTarget(), clear_color, ds_clear, batch);

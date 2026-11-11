@@ -59,6 +59,7 @@ public:
 
     void setColor(QVector4D const & color) { m_color = color; }
     QVector4D color() const { return m_color; }
+    void setSurface(float roughness, float metallic) { m_surface = QVector4D(roughness, metallic, 1.0f, 1.0f); }
 
     /// The model transform applied before the view-projection; identity by
     /// default, so a single object renders where its geometry already sits.
@@ -114,10 +115,10 @@ protected:
     RDrawable() = default;
 
     /**
-     * std140 layout: mat4 mvp, vec4 color, vec4 lightDir, mat4 normalModel.
+     * std140 layout: mat4 mvp, vec4 color, vec4 lightDir, mat4 normalModel, vec4 surface.
      * Unlit shaders use only the leading members of the shared buffer.
      */
-    static constexpr int UBUF_SIZE = 64 + 16 + 16 + 64;
+    static constexpr int UBUF_SIZE = 64 + 16 + 16 + 64 + 16;
 
     /// The shader variant this drawable renders with.
     virtual RMaterial::Kind materialKind() const = 0;
@@ -147,6 +148,7 @@ protected:
         std::vector<QRhiShaderResourceBinding> & bindings);
 
     QVector4D m_color{1.0f, 1.0f, 1.0f, 1.0f};
+    QVector4D m_surface{0.6f, 0.0f, 1.0f, 0.0f};
     QVector3D m_light_dir{0.0f, 0.0f, 1.0f};
     QMatrix4x4 m_model; ///< Per-object model transform (identity by default).
     std::string m_name; ///< Optional name for the scene registry.

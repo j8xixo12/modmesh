@@ -174,15 +174,42 @@ void RSurface::createGeometry(QRhi * rhi, QRhiResourceUpdateBatch * batch)
         return;
     }
     quint32 const vbytes = static_cast<quint32>(m_interleaved.size() * sizeof(float));
-    m_vbuf.reset(rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, vbytes));
+    m_vbuf.reset(rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::VertexBuffer, vbytes));
     m_vbuf->create();
-    batch->uploadStaticBuffer(m_vbuf.get(), m_interleaved.data());
+    batch->updateDynamicBuffer(m_vbuf.get(), 0, vbytes, m_interleaved.data());
+    m_geometry_dirty = false;
     m_vertex_count = static_cast<quint32>(m_interleaved.size() / (m_image.isNull() ? 6 : 8));
     quint32 const ibytes = static_cast<quint32>(m_indices.size() * sizeof(uint32_t));
     m_ibuf.reset(rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::IndexBuffer, ibytes));
     m_ibuf->create();
     batch->uploadStaticBuffer(m_ibuf.get(), m_indices.data());
     m_index_count = static_cast<quint32>(m_indices.size());
+}
+
+bool RSurface::updateGeometry(RSurface && surface)
+{
+    if (!hasGeometry() || !m_image.isNull() || !surface.m_image.isNull() ||
+        m_interleaved.size() != surface.m_interleaved.size() ||
+        m_indices.size() != surface.m_indices.size() ||
+        !std::equal(m_indices.data(), m_indices.data() + m_indices.size(), surface.m_indices.data()))
+    {
+        return false;
+    }
+    m_interleaved = std::move(surface.m_interleaved);
+    m_lo = surface.m_lo;
+    m_hi = surface.m_hi;
+    m_geometry_dirty = true;
+    return true;
+}
+
+void RSurface::updateUniform(QRhiResourceUpdateBatch * batch, QMatrix4x4 const & view_proj)
+{
+    if (m_geometry_dirty && m_vbuf)
+    {
+        batch->updateDynamicBuffer(m_vbuf.get(), 0, static_cast<quint32>(m_interleaved.size() * sizeof(float)), m_interleaved.data());
+        m_geometry_dirty = false;
+    }
+    RDrawable::updateUniform(batch, view_proj);
 }
 
 void RSurface::extendBindings(
@@ -196,11 +223,12 @@ void RSurface::extendBindings(
     { return wrap == 33071 ? QRhiSampler::ClampToEdge : wrap == 33648 ? QRhiSampler::Mirror
                                                                       : QRhiSampler::Repeat; };
     m_sampler.reset(rhi->newSampler(
-        QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None, address(m_wrap_s), address(m_wrap_t)));
+        QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::Linear, address(m_wrap_s), address(m_wrap_t)));
     m_sampler->create();
-    m_texture.reset(rhi->newTexture(QRhiTexture::RGBA8, m_image.size()));
+    m_texture.reset(rhi->newTexture(QRhiTexture::RGBA8, m_image.size(), 1, QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips));
     m_texture->create();
     batch->uploadTexture(m_texture.get(), m_image);
+    batch->generateMips(m_texture.get());
     m_settings.reset(rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, 16));
     m_settings->create();
     float const settings[4] = {m_alpha_cutoff, static_cast<float>(m_alpha_mode), m_alpha_factor, 0};

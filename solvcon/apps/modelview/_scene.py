@@ -27,6 +27,8 @@ class Surface:
     alpha_cutoff: float
     wrap_s: int
     wrap_t: int
+    roughness: float = 1.0
+    metallic: float = 1.0
 
 
 def world_matrices(model):
@@ -84,7 +86,9 @@ def surfaces(model):
                 spec.get('alphaMode', 'OPAQUE'),
                 float(spec.get('alphaCutoff', 0.5)),
                 10497 if texture is None else texture.wrap_s,
-                10497 if texture is None else texture.wrap_t))
+                10497 if texture is None else texture.wrap_t,
+                float(pbr.get('roughnessFactor', 1.0)),
+                float(pbr.get('metallicFactor', 1.0))))
     return output
 
 

@@ -115,6 +115,8 @@ void RDrawable::updateUniform(QRhiResourceUpdateBatch * batch, QMatrix4x4 const 
     batch->updateDynamicBuffer(m_ubuf.get(), 80, 16, light);
     QMatrix4x4 const normal_model(m_model.normalMatrix());
     batch->updateDynamicBuffer(m_ubuf.get(), 96, 64, normal_model.constData());
+    float const surface[4] = {m_surface.x(), m_surface.y(), m_surface.z(), m_surface.w()};
+    batch->updateDynamicBuffer(m_ubuf.get(), 160, 16, surface);
 }
 
 void RDrawable::draw(QRhiCommandBuffer * cb)

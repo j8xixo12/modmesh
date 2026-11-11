@@ -28,6 +28,40 @@ class SurfaceObjectTC(unittest.TestCase):
         self.mgr = pilot.RManager.instance.setUp()
         self.widget = pilot.RDomainWidget()
 
+    def test_background_rejects_invalid_colors_without_changing_state(self):
+        self.widget.setBackgroundColor(0.1, 0.2, 0.3)
+        before = self.widget.backgroundColor
+        np.testing.assert_allclose(before, (0.1, 0.2, 0.3), atol=2e-5)
+        for value in (-0.1, 1.1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self.widget.setBackgroundColor(value, 0.2, 0.3)
+            self.assertEqual(before, self.widget.backgroundColor)
+
+    def test_surface_update_preserves_state_and_rejects_invalid_input(self):
+        self.widget.addSurfaceObject('part', *arrays())
+        self.widget.setObjectTransform('part', 2, 3, 4)
+        before = self.widget.objectModel('part')
+        self.widget.updateSurfaceObject('part', *arrays(10))
+        self.assertEqual(before, self.widget.objectModel('part'))
+        self.widget.fitCameraToScene()
+        np.testing.assert_allclose(self.widget.cameraTarget,
+                                   [12.5, 13.5, 14.5])
+        pos, normal, indices = arrays()
+        indices.ndarray[0, 0] = 99
+        with self.assertRaises(ValueError):
+            self.widget.updateSurfaceObject('part', pos, normal, indices)
+        self.assertEqual(before, self.widget.objectModel('part'))
+
+    def test_material_parameters_reject_nonfinite_and_out_of_range(self):
+        self.widget.addSurfaceObject('part', *arrays())
+        self.widget.setObjectMaterial('part', 0.2, 0.8)
+        for value in (-0.1, 1.1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self.widget.setObjectMaterial('part', value, 0.8)
+            with self.assertRaises(ValueError):
+                self.widget.setObjectMaterial('part', 0.2, value)
+        self.assertEqual(['part'], self.widget.objectNames())
+
     def test_nonplanar_surface_and_replacement(self):
         self.widget.addSurfaceObject('part', *arrays())
         self.widget.fitCameraToScene()

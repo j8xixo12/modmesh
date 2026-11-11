@@ -6,13 +6,14 @@
 from pathlib import Path
 import time
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFileDialog, QLabel, QMessageBox, QPushButton,
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (QFileDialog, QLabel, QLineEdit, QMessageBox,
+                               QPushButton,
                                QHBoxLayout, QSplitter, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from ... import core
-from ...pilot import base
+from ...pilot import base, visual
 from . import _gltf, _scene
 
 
@@ -49,6 +50,7 @@ class ModelViewerApp(base.PilotFeature):
             self._mdi.setActiveSubWindow(self.subwin)
             return
         self.widget = self._mgr.add3DWidget()
+        self.widget.setSampleCount(4)
         self.widget.showAxis(True)
         self._mdi = self._mgr.mdiArea
         self.subwin = self._mdi.activeSubWindow()
@@ -57,6 +59,7 @@ class ModelViewerApp(base.PilotFeature):
             self._closed, self.subwin)
         self.subwin.installEventFilter(self._close_filter)
         host = self.subwin.widget()
+        host.setStyleSheet(visual.WORKSPACE_STYLE)
         handle = next((c for c in host.findChildren(QWidget)
                        if c.metaObject().className()
                        == 'solvcon::RDomainWidget'), None)
@@ -78,13 +81,31 @@ class ModelViewerApp(base.PilotFeature):
             button.clicked.connect(callback)
             buttons.addWidget(button)
         buttons.addStretch()
+        self._theme_key = None
+        self._theme_timer = QTimer(self.subwin)
+        self._theme_timer.timeout.connect(self._apply_theme)
+        self._theme_timer.start(200)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(['Part', 'Triangles / material'])
-        self.tree.setMinimumWidth(260)
+        self.tree.setMinimumWidth(300)
+        self.tree.setColumnWidth(0, 180)
+        self.tree.setColumnWidth(1, 180)
         self.tree.itemChanged.connect(self._visibility)
         self.tree.currentItemChanged.connect(self._selection)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText('Find a part or material...')
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._filter_tree)
+        self.search_empty = QLabel('No matching parts')
+        self.search_empty.hide()
+        sidebar = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(6, 6, 6, 6)
+        sidebar_layout.addWidget(self.search)
+        sidebar_layout.addWidget(self.search_empty)
+        sidebar_layout.addWidget(self.tree, 1)
         splitter = QSplitter()
-        splitter.addWidget(self.tree)
+        splitter.addWidget(sidebar)
         splitter.addWidget(handle)
         splitter.setStretchFactor(1, 1)
         self.summary = QLabel()
@@ -134,6 +155,20 @@ class ModelViewerApp(base.PilotFeature):
                 if item.alpha_mode == 'BLEND':
                     self.widget.setObjectOpacity(item.key, item.color[3])
 
+            self.widget.setObjectMaterial(item.key, item.roughness,
+                                          item.metallic)
+
+    def _apply_theme(self):
+        if self.widget is None:
+            return
+        palette = self.tree.palette()
+        if palette.cacheKey() == self._theme_key:
+            return
+        self._theme_key = palette.cacheKey()
+        dark = palette.window().color().lightness() < 128
+        self.widget.setBackgroundColor(
+            *((0.065, 0.080, 0.105) if dark else (0.91, 0.93, 0.96)))
+
     def load_path(self, path):
         """Prepare a scene completely before replacing the displayed model."""
         start = time.perf_counter()
@@ -156,7 +191,7 @@ class ModelViewerApp(base.PilotFeature):
             f'Size [m]: {hi[0] - lo[0]:.4f} x {hi[1] - lo[1]:.4f} x '
             f'{hi[2] - lo[2]:.4f} | Prepared in {self.elapsed:.3f} s')
         self.selection.setText('Select a part to inspect its geometry.')
-        self.notices.setText('Base-color materials; simplified lighting. '
+        self.notices.setText('Studio lighting; metallic / roughness factors. '
                              + ' | '.join(model.notices))
         self.widget.setView('iso')
         return model
@@ -178,6 +213,8 @@ class ModelViewerApp(base.PilotFeature):
                 names = dict.fromkeys(s.material for s in own)
                 text += ' / ' + ', '.join(names)
             item = QTreeWidgetItem(parent, [node.name, text])
+            item.setToolTip(0, node.name)
+            item.setToolTip(1, text)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(0, Qt.Checked)
             item.setData(0, Qt.UserRole, index)
@@ -191,6 +228,29 @@ class ModelViewerApp(base.PilotFeature):
             insert(index, self.tree)
         self.tree.expandToDepth(1)
         self.tree.blockSignals(False)
+        self._filter_tree(self.search.text())
+
+    def _filter_tree(self, text):
+        query = text.strip().casefold()
+
+        def visit(item, parent_match=False):
+            own_match = (not query or parent_match or
+                         any(query in item.text(column).casefold()
+                             for column in (0, 1)))
+            child_match = False
+            for index in range(item.childCount()):
+                child_match = (visit(item.child(index), own_match)
+                               or child_match)
+            visible = own_match or child_match
+            item.setHidden(not visible)
+            if query and child_match:
+                item.setExpanded(True)
+            return visible
+
+        matches = False
+        for index in range(self.tree.topLevelItemCount()):
+            matches = visit(self.tree.topLevelItem(index)) or matches
+        self.search_empty.setVisible(bool(query) and not matches)
 
     def _visibility(self, item, column):
         self.tree.blockSignals(True)

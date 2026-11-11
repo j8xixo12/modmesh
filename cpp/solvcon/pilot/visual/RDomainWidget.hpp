@@ -26,6 +26,7 @@
 
 #include <rhi/qrhi.h>
 
+#include <QColor>
 #include <QImage>
 #include <QPoint>
 #include <QRhiWidget>
@@ -190,6 +191,10 @@ public:
     void setObjectOpacity(std::string const & name, float opacity);
     /// Set the surface color (r, g, b in [0, 1]) of a named mesh object.
     void setObjectColor(std::string const & name, float r, float g, float b);
+    void setObjectMaterial(std::string const & name, float roughness, float metallic);
+    void updateSurfaceObject(std::string const & name, SimpleArray<float> const & positions, SimpleArray<float> const & normals, SimpleArray<uint32_t> const & indices);
+    void setBackgroundColor(float r, float g, float b);
+    QColor backgroundColor() const { return m_background_color; }
     std::vector<std::string> objectNames() const;
 
     /// Show or hide the mesh, in whatever representation is active.
@@ -562,6 +567,7 @@ private:
     bool m_show_normals = false; ///< Whether the normals overlay is requested.
     float m_normal_scale = 1.0f; ///< Multiplier for the base normal length.
 
+    QColor m_background_color{Qt::white};
     bool m_transparent_capture = false; ///< Clear alpha 0 for a capture.
 
     QPoint m_last_mouse_pos; ///< Last cursor position during a drag.

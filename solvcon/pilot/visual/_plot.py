@@ -354,6 +354,9 @@ class LinePlotWidget(QWidget):
                       self.MARGINS[0] - 4, metrics.height()),
                 Qt.AlignRight | Qt.AlignVCenter, text)
 
+    def _series_color(self, series):
+        return _qcolor(series.color)
+
     def _draw_series(self, painter, rect, to_screen):
         painter.save()
         painter.setClipRect(rect)
@@ -362,7 +365,7 @@ class LinePlotWidget(QWidget):
             points = self._drawn_points(series, rect)
             if len(points) < 2:
                 continue
-            pen = QPen(_qcolor(series.color))
+            pen = QPen(self._series_color(series))
             pen.setWidthF(series.line_width)
             painter.setPen(pen)
             painter.drawPolyline(
@@ -392,7 +395,7 @@ class LinePlotWidget(QWidget):
             series = self.model.series(it)
             if not series.label:
                 continue
-            painter.setPen(QPen(_qcolor(series.color)))
+            painter.setPen(QPen(self._series_color(series)))
             painter.drawText(QRect(box.left(), top, width,
                                    metrics.height()),
                              Qt.AlignRight | Qt.AlignVCenter, series.label)
