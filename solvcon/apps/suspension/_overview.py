@@ -14,6 +14,8 @@ analysis: the app fills it from the session, and clears the cards of an
 analysis whenever an input of that analysis changes.
 """
 
+from PySide6.QtCore import QEvent, Signal
+
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QPushButton,
                                QVBoxLayout, QWidget)
@@ -39,16 +41,12 @@ HOW = {
     'braking': "run Braking / traction in the Vehicle tab",
 }
 
-WORKFLOW = (
-    "<b>Workflow</b>: 1. Pick the vehicle in the Vehicle tab; the axle "
-    "whose corner file is open in the model tree uses the tree.  2. Click a "
-    "part in the model tree and edit its value (springs N/mm, dampers N "
-    "against mm/s); choose to keep the edit or overwrite the file.  3. "
-    "Update the corner KPIs here and run the vehicle analyses.  4. Compare "
-    "with the targets of the profile and with the baseline.  Hover a card "
-    "for its definition and source.")
-
-COLORS = {'in': "#d9f2d9", 'out': "#fde2c4", 'none': "#ececec"}
+COLORS = {
+    False: {'in': ('#edf7f1', '#26734d'), 'out': ('#fff3df', '#955b16'),
+            'none': ('#f2f4f7', '#526174')},
+    True: {'in': ('#1c352e', '#77d6ac'), 'out': ('#3b3020', '#f0bd70'),
+           'none': ('#252d39', '#a8b9cf')},
+}
 
 
 class OverviewTab(QWidget):
@@ -60,6 +58,8 @@ class OverviewTab(QWidget):
     :ivar cards: ``{kpi: QLabel}``
     """
 
+    navigate = Signal(str, int)
+
     def __init__(self, handlers, parent=None):
         super().__init__(parent)
         self._handlers = handlers
@@ -68,9 +68,25 @@ class OverviewTab(QWidget):
         self.custom_targets = {}
         self.notes = {}
         layout = QVBoxLayout(self)
-        guide = QLabel(WORKFLOW)
+        heading = QLabel("Suspension workspace")
+        heading.setStyleSheet("font-size: 18pt; font-weight: 600;")
+        layout.addWidget(heading)
+        guide = QLabel("Set up your vehicle, explore suspension travel, "
+                       "then compare performance against your targets.")
         guide.setWordWrap(True)
         layout.addWidget(guide)
+        steps = QHBoxLayout()
+        self.shortcuts = {}
+        for label, page, task in (("1  Vehicle setup", 'vehicle', 0),
+                                  ("2  Kinematics", 'sweep', 0),
+                                  ("3  Handling", 'vehicle', 1)):
+            button = QPushButton(label)
+            button.setMinimumHeight(36)
+            button.clicked.connect(
+                lambda checked=False, p=page, t=task: self.navigate.emit(p, t))
+            steps.addWidget(button)
+            self.shortcuts[page, task] = button
+        layout.addLayout(steps)
         row = QHBoxLayout()
         self.profile = QComboBox()
         for key, label in _glossary.PROFILES:
@@ -100,6 +116,7 @@ class OverviewTab(QWidget):
         layout.addLayout(row)
         self.cards = {}
         self.group_notes = {}
+        self._grids = {}
         for group, title, question in _glossary.GROUPS:
             box = QGroupBox(title)
             inner = QVBoxLayout(box)
@@ -111,6 +128,7 @@ class OverviewTab(QWidget):
             inner.addWidget(note)
             self.group_notes[group] = note
             grid = QGridLayout()
+            grid.setSpacing(10)
             keys = [k for k, v in _glossary.KPIS.items()
                     if v['group'] == group]
             for it, key in enumerate(keys):
@@ -120,10 +138,25 @@ class OverviewTab(QWidget):
                 card.setMargin(6)
                 grid.addWidget(card, it // 4, it % 4)
                 self.cards[key] = card
+            self._grids[group] = (grid, keys)
             inner.addLayout(grid)
             layout.addWidget(box)
         layout.addStretch(1)
         self.refresh()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        columns = max(1, min(4, self.width() // 260))
+        for grid, keys in self._grids.values():
+            for index, key in enumerate(keys):
+                grid.removeWidget(self.cards[key])
+                grid.addWidget(self.cards[key], index // columns,
+                               index % columns)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.PaletteChange and hasattr(self, 'cards'):
+            self.refresh()
 
     def profile_key(self):
         return self.profile.currentData()
@@ -169,7 +202,9 @@ class OverviewTab(QWidget):
 
     def refresh(self):
         for group, _, _ in _glossary.GROUPS:
-            self.group_notes[group].setText(self.notes.get(group, ""))
+            text = self.notes.get(group, "")
+            self.group_notes[group].setText(text)
+            self.group_notes[group].setVisible(bool(text))
         for key, card in self.cards.items():
             kpi = _glossary.KPIS[key]
             unit = f" {kpi['unit']}" if kpi['unit'] else ""
@@ -177,7 +212,7 @@ class OverviewTab(QWidget):
             state = self.state(key)
             if 'missing' == state:
                 value = "&mdash;"
-                extra = f"not run: {HOW[kpi['group']]}"
+                extra = "Not calculated"
             else:
                 value = format(self.values[key], kpi['fmt']) + unit
                 extra = ""
@@ -189,13 +224,21 @@ class OverviewTab(QWidget):
             band = ("no target band" if target is None else
                     f"target {format(target[0], kpi['fmt'].lstrip('+'))} "
                     f"to {format(target[1], kpi['fmt'].lstrip('+'))}{unit}")
+            state_label = {'in': 'Within target', 'out': 'Outside target'}
+            extra = ' | '.join(filter(None, (state_label.get(state), extra)))
             card.setText(f"<b>{kpi['label']}</b><br>"
                          f"<span style='font-size:13pt'>{value}</span><br>"
-                         f"{band}<br>{extra}")
-            color = COLORS.get(state, COLORS['none'])
-            card.setStyleSheet(f"background: {color}; color: #202020; "
-                               "border-radius: 4px;")
-            tip = kpi['definition']
+                         f"{band}<br>"
+                         f"{extra}")
+            dark = self.palette().window().color().lightness() < 128
+            colors = COLORS[dark]
+            background, accent = colors.get(state, colors['none'])
+            ink = '#e5edf7' if dark else '#243247'
+            card.setStyleSheet(
+                f"background: {background}; color: {ink}; "
+                f"border-left: 3px solid {accent}; border-radius: 6px; "
+                "padding: 8px;")
+            tip = kpi['definition'] + '\nTo calculate: ' + HOW[kpi['group']]
             if target is not None:
                 source = ("your targets file" if key in self.custom_targets
                           else kpi['source'])

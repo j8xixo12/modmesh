@@ -10,12 +10,17 @@ The panels hold no state of the analysis.  They show what the session holds
 and report what the user asks for through callbacks the app sets.
 """
 
-from PySide6.QtCore import Qt
+import os
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox,
                                QDoubleSpinBox, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+                               QLayout,
                                QListWidget,
-                               QListWidgetItem, QPushButton, QTreeWidget,
+                               QListWidgetItem, QLineEdit, QPushButton,
+                               QTabWidget,
+                               QScrollArea, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from . import _session
@@ -59,10 +64,17 @@ class ModelTree(QWidget):
             lambda: self.save_clicked() if self.save_clicked else None)
         self.dirty_label = QLabel("")
         self.library = QComboBox()
+        self.library.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.library.setMinimumContentsLength(18)
         self.library.setToolTip("Suspension types in the model library")
         self.library.activated.connect(self._on_library)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Find a component...")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._filter_tree)
         self.tree.itemSelectionChanged.connect(self._on_selection)
         #: Called with ``(group, name)`` on a double-click, when set.
         self.activated = None
@@ -75,13 +87,52 @@ class ModelTree(QWidget):
         buttons.addWidget(self.save_button)
         layout.addLayout(buttons)
         layout.addWidget(self.dirty_label)
+        layout.addWidget(self.search)
+        self.search_empty = QLabel("No matching components")
+        self.search_empty.setWordWrap(True)
+        self.search_empty.hide()
+        layout.addWidget(self.search_empty)
         layout.addWidget(self.tree, 1)
         self._items = {}
         self._properties = {}
+        self._expanded_before_search = None
+
+    def _filter_tree(self, text):
+        query = text.strip().casefold()
+        if query and self._expanded_before_search is None:
+            self._expanded_before_search = {
+                self.tree.topLevelItem(i).text(0):
+                self.tree.topLevelItem(i).isExpanded()
+                for i in range(self.tree.topLevelItemCount())}
+        matches = False
+        for index in range(self.tree.topLevelItemCount()):
+            group = self.tree.topLevelItem(index)
+            group_match = query in group.text(0).casefold()
+            visible = group_match
+            for child_index in range(group.childCount()):
+                child = group.child(child_index)
+                match = group_match or query in child.text(0).casefold()
+                child.setHidden(not match)
+                visible = visible or match
+            group.setHidden(not visible)
+            matches = matches or visible
+            if query and visible:
+                group.setExpanded(True)
+            elif not query and self._expanded_before_search is not None:
+                group.setExpanded(self._expanded_before_search.get(
+                    group.text(0), True))
+        if not query:
+            self._expanded_before_search = None
+        self.search_empty.setVisible(bool(query) and not matches)
 
     def show_outline(self, outline, model_path):
         """Fill the tree from :meth:`SuspensionSession.outline`."""
-        self.file_label.setText(f"Model: {model_path}")
+        self.file_label.setText(f"Model: {os.path.basename(model_path)}")
+        self.file_label.setToolTip(str(model_path))
+        expanded = {self.tree.topLevelItem(i).text(0):
+                    self.tree.topLevelItem(i).isExpanded()
+                    for i in range(self.tree.topLevelItemCount())}
+        scroll = self.tree.verticalScrollBar().value()
         self.tree.clear()
         self._items = {}
         self._properties = {}
@@ -94,7 +145,9 @@ class ModelTree(QWidget):
                 top.addChild(item)
                 self._items[name] = item
                 self._properties[name] = (group, props)
-            top.setExpanded(True)
+            top.setExpanded(expanded.get(group, True))
+        self._filter_tree(self.search.text())
+        self.tree.verticalScrollBar().setValue(scroll)
 
     def names(self):
         return list(self._items)
@@ -104,6 +157,8 @@ class ModelTree(QWidget):
         item = self._items.get(name)
         if item is None:
             return False
+        if item.isHidden() or item.parent().isHidden():
+            self.search.clear()
         self.tree.setCurrentItem(item)
         return True
 
@@ -241,10 +296,23 @@ class AdjusterPanel(QWidget):
         self.alignment.setTextInteractionFlags(Qt.TextSelectableByMouse)
         QVBoxLayout(align).addWidget(self.alignment)
 
-        layout.addWidget(props, 1)
-        layout.addWidget(adjust)
-        layout.addWidget(target)
-        layout.addWidget(align)
+        tabs = QTabWidget()
+        tuning = QWidget()
+        tuning_layout = QVBoxLayout(tuning)
+        tuning_layout.setSizeConstraint(QLayout.SetMinimumSize)
+        tuning_layout.setContentsMargins(0, 6, 0, 0)
+        tuning_layout.addWidget(adjust)
+        tuning_layout.addWidget(target)
+        tuning_layout.addWidget(align)
+        tuning_layout.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setWidget(tuning)
+        tabs.addTab(scroll, "Adjust")
+        tabs.addTab(props, "Inspect")
+        self.tabs = tabs
+        layout.addWidget(tabs)
 
     def targets(self):
         """The checked targets, ``{key: deg}``."""
@@ -319,6 +387,8 @@ class WarningList(QListWidget):
         when set.
     """
 
+    entries_changed = Signal(int, int)
+
     MARKS = {'error': "ERROR", 'warning': "WARNING", 'info': "info"}
 
     def __init__(self, parent=None):
@@ -340,6 +410,9 @@ class WarningList(QListWidget):
             elif 'warning' == entry['level']:
                 item.setForeground(Qt.darkYellow)
             self.addItem(item)
+        problems = sum(entry['level'] in ('warning', 'error')
+                       for entry in entries)
+        self.entries_changed.emit(len(entries), problems)
 
     def texts(self):
         return [self.item(it).text() for it in range(self.count())]

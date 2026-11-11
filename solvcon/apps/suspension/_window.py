@@ -10,16 +10,19 @@ Every control reports through a callback the app sets, and every readout is
 filled by the app from the session, so the panel holds no result.
 """
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                                QDoubleSpinBox, QGridLayout, QGroupBox,
-                               QHBoxLayout, QHeaderView, QLabel, QMenu,
+                               QHBoxLayout, QHeaderView, QLabel, QLayout,
+                               QMenu,
                                QPushButton, QScrollArea, QSlider,
                                QSpinBox, QSplitter,
                                QTableWidget, QTableWidgetItem, QTabWidget,
                                QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
+
+from ...pilot import visual
 
 from . import _glossary
 from . import _overview
@@ -62,9 +65,9 @@ def _button(text, func):
     return button
 
 
-def _swatch(color):
+def _swatch(color, palette):
     pixmap = QPixmap(14, 14)
-    pixmap.fill(QColor(*color))
+    pixmap.fill(_plots.display_color(color, palette))
     return QIcon(pixmap)
 
 
@@ -102,12 +105,15 @@ class PlotCell(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
         self.plot = plot
+        self.focus = QToolButton()
+        self.focus.setText("Expand")
+        self.focus.setToolTip("Focus this chart; click again for all charts")
+        self.focus.setCheckable(True)
+        layout.addWidget(self.focus, 0, Qt.AlignRight)
         self.summary = QLabel("")
-        self.summary.setStyleSheet("QLabel { font-size: 8pt; color: #303040;"
-                                   " }")
-        plot.setMinimumSize(240, 170)
+        plot.setMinimumSize(280, 210)
+        layout.setSpacing(6)
         self.summary.setWordWrap(True)
         self.summary.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(plot, 1)
@@ -140,13 +146,18 @@ class RunList(QWidget):
         layout.addLayout(row)
         self._filling = False
 
-    def show_runs(self, runs, baseline):
+    def show_runs(self, runs, baseline, current=None):
         self._filling = True
         self.tree.clear()
         for run in runs:
             text = run.name + ("  [baseline]" if run is baseline else "")
+            if run is current:
+                text = "[current] " + text
             item = QTreeWidgetItem([text])
-            item.setIcon(0, _swatch(run.color))
+            item.setToolTip(0, text)
+            color = _plots.CURRENT_COLOR if run is current else run.color
+            item.setIcon(0, _swatch(color, self.palette()))
+            item.setData(0, Qt.UserRole + 1, color)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable
                           | Qt.ItemIsEditable)
             item.setCheckState(0, Qt.Checked if run.visible
@@ -154,6 +165,17 @@ class RunList(QWidget):
             item.setData(0, Qt.UserRole, run.name)
             self.tree.addTopLevelItem(item)
         self._filling = False
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.PaletteChange:
+            blocked = self.tree.blockSignals(True)
+            for index in range(self.tree.topLevelItemCount()):
+                item = self.tree.topLevelItem(index)
+                color = item.data(0, Qt.UserRole + 1)
+                if color is not None:
+                    item.setIcon(0, _swatch(color, self.palette()))
+            self.tree.blockSignals(blocked)
 
     def _emit(self, action, index=None, value=None):
         if index is None:
@@ -170,6 +192,7 @@ class RunList(QWidget):
         index = self.tree.indexOfTopLevelItem(item)
         name = item.data(0, Qt.UserRole)
         text = item.text(0).replace("  [baseline]", "")
+        text = text.removeprefix("[current] ")
         if text != name:
             self._emit('rename', index, text)
         else:
@@ -226,16 +249,21 @@ class SweepTab(QWidget):
         self.overlay_button.setMenu(menu)
         for label, widget in (("Sweep", self.kind), ("from", self.lo),
                               ("to", self.hi), (None, self.count),
-                              (None, self.run), (None, self.export),
-                              (None, self.measured), (None, self.report),
-                              (None, self.layout_button),
-                              (None, self.overlay_button),
-                              (None, self.forces)):
+                              (None, self.run)):
             if label:
                 row.addWidget(QLabel(label))
             row.addWidget(widget)
         row.addStretch(1)
         layout.addLayout(row)
+
+        tools = QHBoxLayout()
+        for widget in (self.layout_button, self.overlay_button,
+                       self.forces):
+            tools.addWidget(widget)
+        tools.addStretch(1)
+        for widget in (self.measured, self.export, self.report):
+            tools.addWidget(widget)
+        layout.addLayout(tools)
 
         cursor = QHBoxLayout()
         self.step_back = QToolButton()
@@ -282,10 +310,12 @@ class SweepTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.grid_host)
+        self.plot_scroll = scroll
+        self._focused = None
         self.runs = RunList()
         self.runs.setMinimumWidth(180)
         self.runs.setMaximumWidth(340)
-        scroll.setMinimumWidth(500)
+        scroll.setMinimumWidth(320)
         split.addWidget(scroll)
         split.addWidget(self.runs)
         split.setStretchFactor(0, 5)
@@ -295,6 +325,7 @@ class SweepTab(QWidget):
         self.cells = {}
         self._kind = None
         self._keys = None
+        self.plot_scroll.viewport().installEventFilter(self)
 
     def _on_run(self):
         self._handlers['range'](self.lo.value(), self.hi.value(),
@@ -334,11 +365,15 @@ class SweepTab(QWidget):
         for it, curve in enumerate(shown):
             plot = _plots.KCPlot(curve.title, kind.x.label, curve.unit)
             cell = PlotCell(plot)
+            cell.focus.toggled.connect(
+                lambda on, key=curve.key: self._focus_plot(key, on))
             self.grid.addWidget(cell, it // self.COLUMNS, it % self.COLUMNS)
             self.plots[curve.key] = plot
             self.cells[curve.key] = cell
         self._kind = kind
         self._keys = keys
+        self._focused = None
+        self._arrange_plots()
         self.layout_menu.clear()
         for curve in kind.curves:
             action = self.layout_menu.addAction(curve.title)
@@ -352,6 +387,32 @@ class SweepTab(QWidget):
             lambda: self._handlers['layout']('save', None, None))
         self.layout_menu.addAction("Load layout...").triggered.connect(
             lambda: self._handlers['layout']('load', None, None))
+
+    def _focus_plot(self, key, on):
+        self._focused = key if on else None
+        self._arrange_plots()
+
+    def _arrange_plots(self):
+        columns = max(1, min(3, self.plot_scroll.viewport().width() // 340))
+        index = 0
+        for key, cell in self.cells.items():
+            self.grid.removeWidget(cell)
+            shown = self._focused is None or key == self._focused
+            cell.setVisible(shown)
+            cell.focus.blockSignals(True)
+            cell.focus.setChecked(key == self._focused)
+            cell.focus.setText("All charts" if key == self._focused
+                               else "Expand")
+            cell.focus.blockSignals(False)
+            if shown:
+                self.grid.addWidget(cell, index // columns, index % columns)
+                index += 1
+
+    def eventFilter(self, watched, event):
+        if watched is self.plot_scroll.viewport() \
+                and event.type() == QEvent.Resize:
+            self._arrange_plots()
+        return super().eventFilter(watched, event)
 
     def show_summaries(self, rows):
         """Write the summary lines under each plot: ``{key: [text]}``."""
@@ -693,9 +754,11 @@ class SetupTab(QWidget):
         self._handlers = handlers
         # The setup fields above the numbers: the dock is often narrow.
         layout = QVBoxLayout(self)
+        layout.setSizeConstraint(QLayout.SetMinimumSize)
         left = QVBoxLayout()
         box = QGroupBox("Setup (the model file is the first reference)")
         self.grid = QGridLayout(box)
+        self.grid.setSizeConstraint(QLayout.SetMinimumSize)
         left.addWidget(box)
         row = QHBoxLayout()
         self.mass = _spin(10.0, 2000.0, 200.0, " kg", decimals=0, step=10.0)
@@ -875,6 +938,28 @@ class RideTab(QWidget):
             f"{out['airborne'] * 1.e3:.0f} ms.")
 
 
+class ResultSummary(QLabel):
+    def __init__(self):
+        super().__init__()
+        self.details = QToolButton()
+        self.details.setText("Details")
+        self.details.setCheckable(True)
+        self.details.toggled.connect(lambda _: self._render())
+        self._text = ""
+
+    def setText(self, text):
+        self._text = text
+        self._render()
+
+    def text(self):
+        return self._text
+
+    def _render(self):
+        short = self._text.split('. ', 1)[0]
+        self.details.setVisible(len(short) < len(self._text))
+        super().setText(self._text if self.details.isChecked() else short)
+
+
 class VehicleTab(QWidget):
     """The full vehicle of a vehicle file (a bundled one, an opened one, or
     converted Assetto Corsa data): steady-state cornering (roll gradient,
@@ -915,9 +1000,6 @@ class VehicleTab(QWidget):
                                  lambda: handlers['vehicle_reference']())
         self.cancel = _button("Cancel", lambda: handlers['vehicle_cancel']())
         self.cancel.setVisible(False)
-        for button in (self.run, self.handling, self.reference,
-                       self.cancel):
-            row.addWidget(button)
         layout.addLayout(row)
         #: Which corner model each axle uses: the model tree or a file.
         self.sources = QLabel("")
@@ -929,9 +1011,32 @@ class VehicleTab(QWidget):
         layout.addWidget(self.notes)
         self.replay = ReplayBar('vehicle', handlers)
         layout.addWidget(self.replay)
+        self.tasks = QTabWidget()
+        task_layouts = []
+        for title in ("Setup", "Handling", "Braking / traction", "Log replay"):
+            page = QWidget()
+            task_layouts.append(QVBoxLayout(page))
+            self.tasks.addTab(scrollable(page), title)
+        setup, handling, braking, replay = task_layouts
+        actions = QHBoxLayout()
+        for button in (self.run, self.handling, self.reference):
+            actions.addWidget(button)
+        actions.addStretch()
+        handling.addLayout(actions)
+        self.status = ResultSummary()
+        self.status.setText("Choose an analysis and run it to see results.")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        feedback = QHBoxLayout()
+        feedback.addWidget(self.status, 1)
+        feedback.addWidget(self.status.details)
+        feedback.addWidget(self.cancel)
+        layout.addLayout(feedback)
+        layout.addWidget(self.tasks, 1)
         box = QGroupBox("Vehicle setup (front / rear axle)")
         self.setup_grid = QGridLayout(box)
-        layout.addWidget(box)
+        setup.addWidget(box)
+        setup.addStretch()
         self.setup_spins = {}
         row = QHBoxLayout()
         self.speed = _spin(10.0, 250.0, 72.0, " km/h", decimals=0, step=5.0)
@@ -945,7 +1050,7 @@ class VehicleTab(QWidget):
             self.rack.value(), self.setups()))
         row.addWidget(self.step)
         row.addStretch(1)
-        layout.addLayout(row)
+        handling.addLayout(row)
         row = QHBoxLayout()
         self.bias = _spin(20.0, 95.0, 65.0, " % front", decimals=1,
                           step=1.0)
@@ -962,7 +1067,7 @@ class VehicleTab(QWidget):
                 self.drive.currentData(), self.setups()))
         row.addWidget(self.longitudinal)
         row.addStretch(1)
-        layout.addLayout(row)
+        braking.addLayout(row)
         # The log replay: the accelerations of a RaceChrono export drive
         # the body; the gyro of the log checks the body rates.
         row = QHBoxLayout()
@@ -990,12 +1095,16 @@ class VehicleTab(QWidget):
             self.drive.currentData(), self.setups()))
         self.log_run.setEnabled(False)
         for widget in (self.log_label, self.log_open, QLabel("from"),
-                       self.log_start, QLabel("for"), self.log_length,
-                       QLabel("gyro"), self.gyro, self.invert_roll,
-                       self.invert_pitch, self.log_run):
+                       self.log_start, QLabel("for"), self.log_length):
             row.addWidget(widget)
         row.addStretch(1)
-        layout.addLayout(row)
+        replay.addLayout(row)
+        row = QHBoxLayout()
+        for widget in (QLabel("Device orientation"), self.gyro,
+                       self.invert_roll, self.invert_pitch, self.log_run):
+            row.addWidget(widget)
+        row.addStretch(1)
+        replay.addLayout(row)
         # A run input change: the results shown are of the old inputs.
         for spin in (self.speed, self.rack, self.bias, self.log_start,
                      self.log_length):
@@ -1007,10 +1116,6 @@ class VehicleTab(QWidget):
         for box in (self.invert_roll, self.invert_pitch):
             box.toggled.connect(
                 lambda _: handlers['vehicle_input_changed']())
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.status)
         plots = QGridLayout()
         self.roll_plot = _plots.KCPlot("Roll and load transfer",
                                        "Lateral acceleration [g]",
@@ -1023,23 +1128,21 @@ class VehicleTab(QWidget):
         self.brake_plot = _plots.KCPlot(
             "Braking: grip used by each axle", "Deceleration [g]",
             "share of grip")
-        # Two by two: the handling and the braking above, the roll and the
-        # step steer below.
-        plots.addWidget(self.handling_plot, 0, 0)
-        plots.addWidget(self.brake_plot, 0, 1)
+        plots.addWidget(self.handling_plot, 0, 0, 1, 2)
         plots.addWidget(self.roll_plot, 1, 0)
         plots.addWidget(self.yaw_plot, 1, 1)
+        handling.addLayout(plots, 1)
+        braking.addWidget(self.brake_plot, 1)
         self.replay_rate_plot = _plots.KCPlot(
             "Log replay: body rates, model and log", "Time [s]", "deg/s")
         self.replay_angle_plot = _plots.KCPlot(
             "Log replay: body motion of the model", "Time [s]",
             "deg, mm, g")
-        plots.addWidget(self.replay_rate_plot, 2, 0)
-        plots.addWidget(self.replay_angle_plot, 2, 1)
+        replay.addWidget(self.replay_rate_plot, 1)
+        replay.addWidget(self.replay_angle_plot, 1)
         #: The handling result the plot compares with (dashed).
         self.reference_handling = None
         self.last_handling = None
-        layout.addLayout(plots, 1)
 
     #: Labels and spin settings of the vehicle setup fields.
     SETUP_FIELDS = {
@@ -1684,8 +1787,23 @@ class AnalysisPanel(QWidget):
 
     def __init__(self, handlers, parent=None):
         super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        heading = QHBoxLayout()
+        self.setStyleSheet(visual.WORKSPACE_STYLE)
+        self.context = QLabel("Suspension analysis")
+        font = self.context.font()
+        font.setBold(True)
+        self.context.setFont(font)
+        heading.addWidget(self.context)
+        heading.addStretch()
+        self.reset_layout = QPushButton("Reset workspace")
+        heading.addWidget(self.reset_layout)
+        self.messages = QToolButton()
+        self.messages.setText("Messages (0)")
+        self.messages.setCheckable(True)
+        heading.addWidget(self.messages)
+        layout.addLayout(heading)
         splitter = QSplitter(Qt.Horizontal)
         self.tabs = QTabWidget()
         self.sweep = SweepTab(handlers)
@@ -1699,6 +1817,7 @@ class AnalysisPanel(QWidget):
         self.vehicle = VehicleTab(handlers)
         self.setup = SetupTab(handlers)
         self.overview = _overview.OverviewTab(handlers)
+        self.overview.navigate.connect(self.navigate)
         for title, tab in (("Overview", self.overview),
                            ("Setup", self.setup),
                            ("Sweep", self.sweep), ("Statics", self.statics),
@@ -1708,16 +1827,49 @@ class AnalysisPanel(QWidget):
                            ("Hardpoints", self.hardpoints),
                            ("Batch", self.batch),
                            ("Profile", self.profile)):
+            if hasattr(tab, 'run') and tab is not self.vehicle:
+                tab.run.setProperty('primary', True)
+            for table in tab.findChildren(QTableWidget):
+                table.horizontalHeader().setSectionResizeMode(
+                    QHeaderView.ResizeToContents)
+                table.horizontalHeader().setStretchLastSection(True)
             self.tabs.addTab(scrollable(tab), title)
+        for button in (self.vehicle.handling, self.vehicle.longitudinal,
+                       self.vehicle.log_run):
+            button.setProperty('primary', True)
         # The overview (the workflow and the KPIs) first.
         self.tabs.setCurrentIndex(0)
-        box = QGroupBox("Warnings")
+        box = QGroupBox("Messages")
+        box.setMinimumWidth(220)
+        box.setMaximumWidth(320)
         self.warnings = _panel.WarningList()
+        self.warnings.entries_changed.connect(self._show_message_count)
         QVBoxLayout(box).addWidget(self.warnings)
+        self.messages.toggled.connect(box.setVisible)
+        box.hide()
         splitter.addWidget(self.tabs)
         splitter.addWidget(box)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 1)
         layout.addWidget(splitter)
+
+    def navigate(self, name, task=0):
+        page = getattr(self, name)
+        self.select(page)
+        if page is self.vehicle:
+            page.tasks.setCurrentIndex(task)
+
+    def select(self, page):
+        for index in range(self.tabs.count()):
+            if self.tabs.widget(index).widget() is page:
+                self.tabs.setCurrentIndex(index)
+                return
+
+    def _show_message_count(self, count, problems):
+        text = f"Messages ({count})"
+        if problems:
+            text += f" - {problems} need attention"
+            self.messages.setChecked(True)
+        self.messages.setText(text)
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

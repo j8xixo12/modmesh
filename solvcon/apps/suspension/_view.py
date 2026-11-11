@@ -34,6 +34,7 @@ from ...pilot import base
 
 from . import _navigation as nav
 from . import _scene
+from . import _appearance
 
 __all__ = [
     'CornerView',
@@ -253,9 +254,7 @@ class CornerView(object):
     #: The home view direction from the target: from ahead, a little
     #: inboard, and above, so the wheel stands behind the links.
     VIEW_DIRECTION = (1.0, -0.45, 0.55)
-    #: Color and opacity of the named body meshes that are not the default
-    #: surface color: a dark rubber tire and a light alloy rim, both see
-    #: through to the upright inside the wheel.
+    #: Surface colors and the opacities used in see-through mode.
     BODY_LOOKS = {'wheel': ((0.16, 0.16, 0.18), 0.55),
                   'rim': ((0.80, 0.82, 0.86), 0.6)}
     #: Length in mm of the longest force arrow.
@@ -293,6 +292,7 @@ class CornerView(object):
         self.mouse_mapping = 'blender'
         self.grid_shown = True
         self.quad = False
+        self.see_through = False
         self.measuring = False
         self.measure_points = []
         self.measure_text = ""
@@ -305,6 +305,12 @@ class CornerView(object):
         self._geometries = []
         self._last_pose = None
         self._last_states = {}
+        self._palette_key = None
+        self._dark = False
+        self._motion_quality = False
+        self._quality_timer = QTimer()
+        self._quality_timer.setSingleShot(True)
+        self._quality_timer.timeout.connect(self._restore_quality)
         self._anim = None
         self._anim_timer = QTimer()
         self._anim_timer.setInterval(15)
@@ -369,6 +375,7 @@ class CornerView(object):
 
     def _add_pane(self, pane):
         widget = pane.widget
+        widget.setSampleCount(1 if self._motion_quality else 4)
         widget.cameraMode = "orbit"
         widget.worldUp = (0.0, 0.0, 1.0)
         widget.zoomToCursor = True
@@ -380,6 +387,8 @@ class CornerView(object):
         pane.handle.installEventFilter(filt)
         self._filters.append(filt)
         self.panes.append(pane)
+        pane.surface_cache = {}
+        self._palette_key = None
 
     def close(self):
         if self.subwin is not None:
@@ -388,6 +397,8 @@ class CornerView(object):
             self._on_closed()
 
     def _on_closed(self):
+        self._quality_timer.stop()
+        self._motion_quality = False
         self._watch.stop()
         self._anim_timer.stop()
         self._anim = None
@@ -429,10 +440,20 @@ class CornerView(object):
     def _build_toolbar(self):
         bar = QToolBar("3D view")
         bar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        views = QMenu(self.subwin)
         for key, text, keys in VIEW_KEYS:
-            bar.addAction(self._action(
+            action = self._action(
                 key, text, lambda name=key: self.set_view(name), keys,
-                tip=f"{text} view"))
+                tip=f"{text} view")
+            views.addAction(action)
+            if key in ('front', 'top', 'iso'):
+                bar.addAction(action)
+        view_button = QToolButton()
+        view_button.setText("Views")
+        view_button.setToolTip("All standard views and Home")
+        view_button.setMenu(views)
+        view_button.setPopupMode(QToolButton.InstantPopup)
+        bar.addWidget(view_button)
         bar.addSeparator()
         bar.addAction(self._action('fit', "Fit all", self.fit_all, ("F",),
                                    tip="Frame the whole corner"))
@@ -474,6 +495,10 @@ class CornerView(object):
         bar.addSeparator()
         # Parented, so the menu and its actions live as long as the view.
         menu = QMenu(self.subwin)
+        menu.addAction(self._action(
+            'see_through', "See through wheels", self.set_see_through,
+            checkable=True))
+        self.actions['see_through'].setChecked(self.see_through)
         self._options_menu = menu
         menu.addAction(self._action('save_view', "Save view...",
                                     self._ask_save_view))
@@ -902,9 +927,41 @@ class CornerView(object):
         self.hud.setText(self.hud_text())
         self.place_overlays()
 
+    def _line_color(self, color):
+        if not self._dark:
+            return color
+        return tuple(0.40 + 0.60 * component for component in color)
+
+    def _apply_theme(self):
+        if not self.panes:
+            return
+        palette = self.panes[0].handle.palette()
+        key = palette.cacheKey()
+        if key == self._palette_key:
+            return
+        self._palette_key = key
+        self._dark = palette.window().color().lightness() < 128
+        background = ((0.065, 0.080, 0.105) if self._dark
+                      else (0.91, 0.93, 0.96))
+        for pane in self.panes:
+            pane.widget.setBackgroundColor(*background)
+            if pane.label is not None:
+                pane.label.setStyleSheet(
+                    "background: palette(window); color: palette(text); "
+                    "padding: 4px; font-weight: bold;")
+        for label in (self.hud, self.help):
+            if label is not None:
+                label.setStyleSheet(
+                    "background: palette(window); color: palette(text); "
+                    "padding: 6px; border-radius: 4px;")
+        self._draw_grid()
+        if self._last_pose is not None:
+            self.show_pose(*self._last_pose)
+
     def _watch_camera(self):
         """Follow the camera of every pane: the projection of the auto mode,
         the cube, and the readout."""
+        self._apply_theme()
         changed = False
         for pane in self.panes:
             state = pane.state()
@@ -998,18 +1055,49 @@ class CornerView(object):
 
     # The scene.
 
+    def set_see_through(self, shown):
+        self.see_through = bool(shown)
+        for pane in self.panes:
+            for geometry in self._geometries:
+                for body, (_, opacity) in self.BODY_LOOKS.items():
+                    pane.widget.setObjectOpacity(
+                        body + geometry.suffix,
+                        opacity if self.see_through else 1.0)
+
     def _build_meshes(self, panes):
         shown = set()
         for pane in panes:
             for geometry in self._geometries:
                 for name, mesh in geometry.body_meshes().items():
-                    pane.widget.addObject(name, mesh)
+                    if name == 'wheel' + geometry.suffix:
+                        positions, normals, uv, indices = \
+                            _appearance.tire_surface(geometry)
+                        pane.widget.addTexturedSurfaceObject(
+                            name, core.SimpleArrayFloat32(array=positions),
+                            core.SimpleArrayFloat32(array=normals),
+                            core.SimpleArrayFloat32(array=uv),
+                            core.SimpleArrayUint32(array=indices),
+                            _appearance.rubber_texture())
+                        pane.widget.setObjectMaterial(name, 0.88, 0.0)
+                    elif name == 'rim' + geometry.suffix:
+                        positions, normals, indices = \
+                            _appearance.rim_surface(geometry)
+                        pane.widget.addSurfaceObject(
+                            name, core.SimpleArrayFloat32(array=positions),
+                            core.SimpleArrayFloat32(array=normals),
+                            core.SimpleArrayUint32(array=indices))
+                        pane.widget.setObjectMaterial(name, 0.23, 0.85)
+                    else:
+                        pane.widget.addObject(name, mesh)
+                        pane.widget.setObjectMaterial(name, 0.35, 0.65)
                     shown.add(name)
                 for body, (color, opacity) in self.BODY_LOOKS.items():
+                    tint = (1.0, 1.0, 1.0) if body == 'wheel' else color
                     pane.widget.setObjectColor(body + geometry.suffix,
-                                               *color)
+                                               *tint)
                     pane.widget.setObjectOpacity(body + geometry.suffix,
-                                                 opacity)
+                                                 opacity if self.see_through
+                                                 else 1.0)
             for name in self._meshes - shown:
                 pane.widget.setObjectVisible(name, False)
         return shown
@@ -1059,7 +1147,8 @@ class CornerView(object):
         ends = self._grid_ends if (self.grid_shown
                                    and self._grid is not None) else []
         for pane in self.panes:
-            pane.widget.setObjectSegments("grid", _points(ends), *GRID_COLOR)
+            color = (0.20, 0.24, 0.30) if self._dark else GRID_COLOR
+            pane.widget.setObjectSegments("grid", _points(ends), *color)
         self._update_hud()
 
     def aim(self):
@@ -1071,6 +1160,11 @@ class CornerView(object):
         self.widget.cameraPosition = position
         self.widget.cameraUp = up
         self._watch_camera()
+
+    def _restore_quality(self):
+        self._motion_quality = False
+        for pane in self.panes:
+            pane.widget.setSampleCount(4)
 
     def show_pose(self, geometries, pose, selected=None, forces=None,
                   overlays=None):
@@ -1085,6 +1179,11 @@ class CornerView(object):
         """
         if self.widget is None or pose is None:
             return
+        if not self._motion_quality:
+            self._motion_quality = True
+            for pane in self.panes:
+                pane.widget.setSampleCount(1)
+        self._quality_timer.start(250)
         self._last_pose = (geometries, pose, selected, forces, overlays)
         segments = {}
         points = {}
@@ -1117,6 +1216,25 @@ class CornerView(object):
             for _, point, force in forces:
                 arrows.extend(_scene.arrow_segments(point, force * scale))
         overlays = overlays or {}
+        rods = _appearance.link_surface(links)
+        coils = _appearance.spring_surface(spring)
+        dampers = _appearance.link_surface(spring, radius=5.0)
+        surfaces = []
+        for name, data, color, material in (
+                ('link_rods', rods, (0.48, 0.54, 0.62), (0.32, 0.75)),
+                ('spring_coils', coils, (0.16, 0.56, 0.35), (0.3, 0.65)),
+                ('spring_dampers', dampers, (0.55, 0.59, 0.65),
+                 (0.28, 0.8))):
+            if data is None:
+                surfaces.append((name, None, None, color, material))
+            else:
+                positions, normals, indices = data
+                key = (positions.tobytes(), normals.tobytes(),
+                       indices.tobytes())
+                arrays = (core.SimpleArrayFloat32(array=positions),
+                          core.SimpleArrayFloat32(array=normals),
+                          core.SimpleArrayUint32(array=indices))
+                surfaces.append((name, arrays, key, color, material))
         for pane in self.panes:
             widget = pane.widget
             before = pane.state()
@@ -1126,9 +1244,17 @@ class CornerView(object):
                     widget.setObjectTransform(
                         name, *[float(v) for v in trans], 1.0, 1.0, 1.0,
                         *[float(v) for v in quat])
-            widget.setObjectSegments("links", _points(links), *LINK_COLOR)
-            widget.setObjectSegments("spring", _points(spring),
-                                     *SPRING_COLOR)
+            for name, arrays, key, color, material in surfaces:
+                if (name in pane.surface_cache
+                        and pane.surface_cache[name] == key):
+                    continue
+                if arrays is None:
+                    widget.removeObject(name)
+                else:
+                    widget.updateSurfaceObject(name, *arrays)
+                    widget.setObjectColor(name, *color)
+                    widget.setObjectMaterial(name, *material)
+                pane.surface_cache[name] = key
             widget.setObjectSegments("selected", _points(chosen),
                                      *SELECT_COLOR)
             widget.setObjectSegments("arb", _points(arb), *SPRING_COLOR)
@@ -1136,7 +1262,7 @@ class CornerView(object):
             widget.setObjectSegments("forces", _points(arrows), *FORCE_COLOR)
             for name, color in OVERLAYS.items():
                 widget.setObjectSegments(name, _points(overlays.get(name, [])),
-                                         *color)
+                                         *self._line_color(color))
             # The widget reframes when a pose grows the framing box, which
             # resets its camera; keep the camera the user had.
             if not nav.same_state(before, pane.state()):

@@ -99,6 +99,7 @@ class SuspensionApp(base.PilotFeature):
         self.adjusters = None
         self.analysis = None
         self.docks = []
+        self._hidden_docks = []
         self.selected = None
         self.show_forces = False
         self.run = None
@@ -158,6 +159,8 @@ class SuspensionApp(base.PilotFeature):
         self.refresh()
         if self.view.subwin is not None:
             self.view.subwin.showMaximized()
+        self.reset_workspace()
+        QTimer.singleShot(0, self.reset_workspace)
 
     def _start_session(self):
         try:
@@ -245,6 +248,8 @@ class SuspensionApp(base.PilotFeature):
         self.adjusters.edited = self.on_property_edited
         self.adjusters.solved = self.on_solve_alignment
         self.analysis = _window.AnalysisPanel(handlers)
+        for panel in (self.tree, self.adjusters):
+            panel.setStyleSheet(self.analysis.styleSheet())
         self.analysis.warnings.picked = self.tree.select
         self.analysis.sweep.runs.changed = self.on_run_list
         self.analysis.vehicle.show_vehicles(self.session.vehicles())
@@ -265,6 +270,48 @@ class SuspensionApp(base.PilotFeature):
                            if widget is self.adjusters else widget)
             main.addDockWidget(area, dock)
             self.docks.append(dock)
+        self.analysis.reset_layout.clicked.connect(self.reset_workspace)
+        self.analysis.tabs.currentChanged.connect(self.on_analysis_changed)
+
+    def reset_workspace(self):
+        if not self.docks:
+            return
+        main = self._mgr.mainWindow
+        for dock in main.findChildren(QDockWidget):
+            if dock.windowTitle() in ('Console', 'Terminal') \
+                    and dock.isVisible():
+                if dock not in self._hidden_docks:
+                    self._hidden_docks.append(dock)
+                dock.hide()
+        for dock, area in zip(self.docks, (Qt.LeftDockWidgetArea,
+                                           Qt.RightDockWidgetArea,
+                                           Qt.BottomDockWidgetArea)):
+            dock.setFloating(False)
+            main.addDockWidget(area, dock)
+            dock.show()
+        main.resizeDocks(self.docks[:2], [250, 280], Qt.Horizontal)
+        main.resizeDocks([self.docks[2]],
+                         [max(340, int(main.height() * 0.60))], Qt.Vertical)
+
+    def on_analysis_changed(self, index):
+        panel = self.analysis
+        if panel is None:
+            return
+        key = panel.tabs.tabText(index).lower()
+        panel.context.setText(f"Suspension / {panel.tabs.tabText(index)}")
+        panel.sweep.play.setChecked(False)
+        self.anim_timer.stop()
+        self._animating = None
+        for name in self.animations:
+            self._bar(name).play.setChecked(False)
+        if self.animations.get(key):
+            self.on_frame(key, self._bar(key).slider.value())
+        elif key == 'dynamics' and self.run and self.run.poses:
+            self.on_replay(panel.dynamics.replay.value())
+        elif key == 'profile' and self.profile and self.profile['poses']:
+            self.on_profile_cursor(panel.profile.slider.value())
+        else:
+            self.update_cursor()
 
     def close(self):
         self.view.close()
@@ -272,6 +319,7 @@ class SuspensionApp(base.PilotFeature):
     def _on_closed(self):
         self.timer.stop()
         self.play_timer.stop()
+        self.anim_timer.stop()
         self.cancel_vehicle_job()
         if self.run is not None:
             self.run.cancel()
@@ -279,6 +327,9 @@ class SuspensionApp(base.PilotFeature):
             self._mgr.mainWindow.removeDockWidget(dock)
             dock.deleteLater()
         self.docks = []
+        for dock in self._hidden_docks:
+            dock.show()
+        self._hidden_docks = []
         self.tree = self.adjusters = self.analysis = None
         self._geometry = self._geometry_setup = None
         self._geometries = []
@@ -308,9 +359,11 @@ class SuspensionApp(base.PilotFeature):
         if self.tree is None or sess is None:
             return
         picked = self.tree.current_name()
+        inspector_tab = self.adjusters.tabs.currentIndex()
         self.tree.show_outline(sess.outline(), sess.model_path)
         if picked is not None:
             self.tree.select(picked)
+        self.adjusters.tabs.setCurrentIndex(inspector_tab)
         self.adjusters.show_adjusters(sess.adjusters,
                                       sess.base_model.adjusters)
         self.tree.show_library(sess.library(), os.path.splitext(
@@ -361,7 +414,7 @@ class SuspensionApp(base.PilotFeature):
                 {f"measured: {d.name}" for d in measured})
             summaries[curve.key] = lines
         sweep.show_summaries(summaries)
-        sweep.runs.show_runs(sess.runs, sess.baseline)
+        sweep.runs.show_runs(sess.runs, sess.baseline, sess.current_run())
         legend = []
         if current is not None:
             legend.append(f"solid blue: current {kind.name} sweep, "
@@ -404,9 +457,10 @@ class SuspensionApp(base.PilotFeature):
         if self._showing_run:
             # The quarter car posed the view: rebuild the corners of the
             # sweep it hid, and pose the sweep again.
+            aim = len(self._showing_run) != len(self._geometries)
             self._showing_run = False
             self._geometry_setup = None
-            self._rebuild_view()
+            self._rebuild_view(aim=aim)
         forces = sess.forces() if self.show_forces else None
         overlays = {key: ends for key, ends in sess.overlays().items()
                     if key in self.overlays}
@@ -443,6 +497,7 @@ class SuspensionApp(base.PilotFeature):
         self.update_cursor()
 
     def on_selected(self, group, name, props):
+        self.adjusters.tabs.setCurrentIndex(1)
         self._picked = (group, name)
         self.adjusters.show_properties(f"{group}: {name}", props,
                                        self.session.editable(group, name))
@@ -1081,6 +1136,7 @@ class SuspensionApp(base.PilotFeature):
         :attr:`background`, else in place.  A new run replaces a running
         one."""
         tab = self.analysis.vehicle
+        self.analysis.select(tab)
         self.cancel_vehicle_job()
         if not self.background:
             sess = self.session
@@ -1167,8 +1223,12 @@ class SuspensionApp(base.PilotFeature):
     def set_animation(self, key, frames, index=None):
         """Keep the 3D frames of a tab and show one (the last by
         default)."""
-        self.anim_timer.stop()
-        self._animating = None
+        show_frame = (key != 'vehicle' or not self.background
+                      or self.analysis.tabs.currentWidget().widget()
+                      is self.analysis.vehicle)
+        if show_frame or self._animating == key:
+            self.anim_timer.stop()
+            self._animating = None
         self.animations[key] = frames
         bar = self._bar(key)
         bar.play.blockSignals(True)
@@ -1176,7 +1236,7 @@ class SuspensionApp(base.PilotFeature):
         bar.play.blockSignals(False)
         index = len(frames) - 1 if index is None else index
         bar.set_count(len(frames), max(index, 0))
-        if frames:
+        if frames and show_frame:
             self.on_frame(key, max(index, 0))
 
     def on_frame(self, key, index):
@@ -1353,6 +1413,7 @@ class SuspensionApp(base.PilotFeature):
 
     def on_dynamics(self):
         tab = self.analysis.dynamics
+        self.analysis.select(tab)
         self.on_cancel()
         self.run = self.session.quarter_car(tab.mass.value(),
                                             road=tab.road())
@@ -1415,7 +1476,8 @@ class SuspensionApp(base.PilotFeature):
              (200, 60, 40), False),
             ("travel stop force [N]", hist['time'], hist['stop'],
              (150, 60, 170), False)])
-        self._pose_run()
+        if self.analysis.tabs.currentWidget().widget() is tab:
+            self._pose_run()
         now = hist['time'][-1] if hist['time'] else 0.0
         state = run.message if run.finished else "running"
         text = f"t = {now:.3f} / {run.duration:.3f} s, {state}"
@@ -1687,6 +1749,7 @@ class SuspensionApp(base.PilotFeature):
         self.analysis.hardpoints.select(name)
         if name is not None and name in self.view.points:
             design, now = self.view.points[name]
+            self.adjusters.tabs.setCurrentIndex(1)
             self.adjusters.show_properties(f"hardpoint: {name}", [
                 ("design", _view._fmt(design) + " mm"),
                 ("now", _view._fmt(now) + " mm"),

@@ -72,6 +72,197 @@ class _Fixture(object):
 @unittest.skipUnless(ENGINE, "the multibody engine is not installed")
 class SuspensionAppTC(_Fixture, unittest.TestCase):
 
+    def test_static_quality_returns_after_pose_updates_stop(self):
+        from PySide6.QtCore import QEventLoop, QTimer
+        feature = self._open()
+        feature.update_cursor()
+        self.assertTrue(feature.view._motion_quality)
+        loop = QEventLoop()
+        QTimer.singleShot(600, loop.quit)
+        loop.exec()
+        self.assertFalse(feature.view._motion_quality)
+        feature.update_cursor()
+        self.assertTrue(feature.view._motion_quality)
+
+    def test_component_search_filters_and_restores_external_selection(self):
+        feature = self._open()
+        tree = feature.tree
+        names = tree.names()
+        self.assertGreater(len(names), 1)
+        tree.search.setText('no such component 987654321')
+        self.assertFalse(tree.search_empty.isHidden())
+        tree.search.setText(names[0])
+        self.assertTrue(tree.search_empty.isHidden())
+        self.assertFalse(tree._items[names[0]].isHidden())
+        hidden = next(name for name in names
+                      if tree._items[name].isHidden()
+                      or tree._items[name].parent().isHidden())
+        self.assertTrue(tree.select(hidden))
+        self.assertEqual('', tree.search.text())
+        self.assertEqual(hidden, tree.current_name())
+
+    def test_tree_expansion_survives_refresh_and_search(self):
+        feature = self._open()
+        tree = feature.tree
+        group = tree.tree.topLevelItem(0)
+        name = group.text(0)
+        group.setExpanded(False)
+        feature.refresh()
+        group = tree.tree.topLevelItem(0)
+        self.assertEqual(name, group.text(0))
+        self.assertFalse(group.isExpanded())
+        tree.search.setText(name)
+        self.assertTrue(group.isExpanded())
+        tree.search.clear()
+        self.assertFalse(group.isExpanded())
+
+    def test_setup_fields_scroll_instead_of_collapsing_after_refresh(self):
+        from PySide6.QtCore import QPoint
+        feature = self._open()
+        self.mgr.mainWindow.show()
+        self.mgr.mainWindow.resize(1100, 650)
+        feature.analysis.select(feature.analysis.setup)
+        feature.refresh()
+        QApplication.processEvents()
+        for spin in feature.analysis.setup.spins.values():
+            self.assertGreaterEqual(spin.height(),
+                                    spin.minimumSizeHint().height())
+            page = feature.analysis.setup
+            bottom = spin.mapTo(page, QPoint()).y() + spin.height()
+            self.assertLessEqual(bottom,
+                                 page.mass.mapTo(page, QPoint()).y())
+
+    def test_switching_analysis_restores_its_pose_and_stops_playback(self):
+        feature = self._open()
+        panel = feature.analysis
+        panel.select(panel.vehicle)
+        vehicle = panel.vehicle
+        feature.on_handling(vehicle.vehicle.currentData(), vehicle.setups())
+        self.assertEqual(4, len(feature.view._geometries))
+        vehicle.replay.play.setChecked(True)
+        self.assertTrue(feature.anim_timer.isActive())
+
+        panel.select(panel.sweep)
+        self.assertFalse(feature.anim_timer.isActive())
+        self.assertFalse(vehicle.replay.play.isChecked())
+        self.assertFalse(feature._showing_run)
+        self.assertEqual(1, len(feature.view._geometries))
+        panel.sweep.play.setChecked(True)
+        feature.background = True
+        feature.set_animation('vehicle', feature.animations['vehicle'])
+        self.assertEqual(1, len(feature.view._geometries))
+        self.assertTrue(feature.play_timer.isActive())
+        panel.select(panel.vehicle)
+        self.assertFalse(feature.play_timer.isActive())
+        self.assertEqual(4, len(feature.view._geometries))
+
+    def test_expanding_a_chart_keeps_its_data_and_restores_the_grid(self):
+        feature = self._open()
+        sweep = feature.analysis.sweep
+        feature.analysis.select(sweep)
+        before = sweep.plots['camber'].data(_app.CURRENT)
+        sweep.cells['camber'].focus.click()
+        self.assertTrue(all(cell.isHidden() for key, cell in
+                            sweep.cells.items() if key != 'camber'))
+        self.assertEqual(before, sweep.plots['camber'].data(_app.CURRENT))
+        sweep.cells['camber'].focus.click()
+        self.assertTrue(all(not cell.isHidden()
+                            for cell in sweep.cells.values()))
+
+    def test_messages_do_not_take_space_until_a_problem_occurs(self):
+        feature = self._open()
+        panel = feature.analysis
+        self.assertFalse(panel.messages.isChecked())
+        panel.warnings.show_entries([{
+            'level': 'error', 'message': 'The model could not be solved.'}])
+        self.assertTrue(panel.messages.isChecked())
+        self.assertIn('1 need attention', panel.messages.text())
+
+    def test_current_run_uses_the_curve_color_in_the_run_list(self):
+        from PySide6.QtCore import Qt
+        from solvcon.apps.suspension import _plots
+        feature = self._open()
+        feature.adjusters.spins['camber_shim'].setValue(0.1)
+        tree = feature.analysis.sweep.runs.tree
+        current = tree.topLevelItem(tree.topLevelItemCount() - 1)
+        self.assertTrue(current.text(0).startswith('[current]'))
+        self.assertEqual(_plots.CURRENT_COLOR,
+                         tuple(current.data(0, Qt.UserRole + 1)))
+
+    def test_changing_theme_does_not_edit_run_visibility(self):
+        from PySide6.QtGui import QColor, QPalette
+        feature = self._open()
+        runs = feature.analysis.sweep.runs
+        runs.changed = mock.Mock()
+        palette = runs.palette()
+        palette.setColor(QPalette.Window, QColor(30, 30, 30))
+        runs.setPalette(palette)
+        QApplication.processEvents()
+        runs.changed.assert_not_called()
+
+    def test_short_adjuster_panel_keeps_inputs_readable(self):
+        feature = self._open()
+        self.mgr.mainWindow.show()
+        self.mgr.mainWindow.resize(1100, 650)
+        QApplication.processEvents()
+        panel = feature.adjusters
+        for spin in (*panel.spins.values(), *panel.target_value.values()):
+            self.assertGreaterEqual(spin.height(),
+                                    spin.minimumSizeHint().height())
+        scroll = panel.tabs.widget(0)
+        self.assertGreater(scroll.verticalScrollBar().maximum(), 0)
+
+    def test_overview_shortcuts_open_the_named_vehicle_task(self):
+        feature = self._open()
+        panel = feature.analysis
+        for (name, task), button in panel.overview.shortcuts.items():
+            panel.select(panel.overview)
+            button.click()
+            self.assertIs(panel.tabs.currentWidget().widget(),
+                          getattr(panel, name))
+            if name == 'vehicle':
+                self.assertEqual(task, panel.vehicle.tasks.currentIndex())
+
+    def test_smooth_wheel_surfaces_have_no_normal_or_uv_seam(self):
+        from solvcon.apps.suspension import _appearance
+        from PySide6.QtGui import QImage
+        feature = self._open()
+        geometry = feature.session.geometry()
+        points, normals, uv, indices = _appearance.tire_surface(geometry)
+        self.assertTrue(np.isfinite(points).all())
+        np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1,
+                                   atol=1e-6)
+        np.testing.assert_allclose(points[uv[:, 0] == 0],
+                                   points[uv[:, 0] == 1], atol=1e-5)
+        self.assertLess(indices.max(), len(points))
+        image = QImage.fromData(_appearance.rubber_texture())
+        self.assertEqual((2048, 1024), (image.width(), image.height()))
+        points, normals, indices = _appearance.rim_surface(geometry)
+        self.assertTrue(np.isfinite(normals).all())
+        self.assertLess(indices.max(), len(points))
+
+    def test_spring_surface_tracks_endpoints_and_skips_zero_length(self):
+        from solvcon.apps.suspension import _appearance
+        self.assertIsNone(_appearance.spring_surface([(0, 0, 0)] * 2))
+        points, normals, indices = _appearance.spring_surface(
+            [(0, 0, 0), (0, 0, 100)])
+        self.assertTrue(np.isfinite(points).all())
+        np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1,
+                                   atol=1e-6)
+        self.assertLess(indices.max(), len(points))
+        self.assertLess(float(points[:, 2].min()), 0)
+        self.assertGreater(float(points[:, 2].max()), 100)
+
+    def test_link_surface_handles_short_and_degenerate_links(self):
+        from solvcon.apps.suspension import _appearance
+        self.assertIsNone(_appearance.link_surface([(0, 0, 0)] * 2))
+        points, normals, indices = _appearance.link_surface(
+            [(0, 0, 0), (0, 0, 1)])
+        self.assertTrue(np.isfinite(points).all())
+        np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1,
+                                   atol=1e-6)
+        self.assertLess(indices.max(), len(points))
+
     def _reference(self, feature, **adjusters):
         sess = feature.session
         model = ENGINE.model.CornerModel.load(sess.model_path)
@@ -90,8 +281,9 @@ class SuspensionAppTC(_Fixture, unittest.TestCase):
                      "anti-roll bar", "wheel travel driver", "camber shim"):
             self.assertIn(name, names)
         self.assertEqual(
-            {"chassis", "grid", "links", "rack", "rim", "rocker", "spring",
-             "upright", "wheel"}, set(feature.view.widget.objectNames()))
+            {"chassis", "grid", "link_rods", "rack", "rim", "rocker",
+             "spring_coils", "spring_dampers", "upright", "wheel"},
+            set(feature.view.widget.objectNames()))
 
     def test_the_plots_draw_the_bump_sweep(self):
         feature = self._open()

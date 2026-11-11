@@ -33,6 +33,13 @@ CURRENT_COLOR = (31, 95, 168)
 PREVIOUS_COLOR = (194, 87, 26)
 
 
+def display_color(color, palette):
+    ink = QColor(*color)
+    if palette.window().color().lightness() < 128:
+        ink = ink.lighter(150)
+    return ink
+
+
 class KCPlot(visual.LinePlotWidget):
     """One K&C quantity over the sweep, with units on both axes.
 
@@ -46,6 +53,11 @@ class KCPlot(visual.LinePlotWidget):
         self.cursor = None
         self._dashed = set()
         self._markers = set()
+
+    def _series_color(self, series):
+        color = series.color
+        return display_color((color.r, color.g, color.b, color.a),
+                             self.palette())
 
     def set_curves(self, curves):
         """Replace the curves with ``[(label, x, y, color, dashed)]``.
@@ -123,12 +135,12 @@ class KCPlot(visual.LinePlotWidget):
             points = self._drawn_points(series, rect)
             if len(points) < 2:
                 continue
-            color = series.color
-            pen = QPen(QColor(color.r, color.g, color.b, color.a))
+            color = self._series_color(series)
+            pen = QPen(color)
             pen.setWidthF(series.line_width)
             if series.label in self._markers:
                 painter.setPen(pen)
-                painter.setBrush(QColor(color.r, color.g, color.b))
+                painter.setBrush(color)
                 for x, y in points:
                     painter.drawEllipse(QPointF(to_screen(x, y)), 2.5, 2.5)
                 continue
@@ -161,9 +173,9 @@ class KCPlot(visual.LinePlotWidget):
             value = self.marker(series.label)
             if value is None or not math.isfinite(value):
                 continue
-            color = series.color
-            painter.setPen(QPen(QColor(color.r, color.g, color.b), 1.5))
-            painter.setBrush(QColor(color.r, color.g, color.b))
+            color = self._series_color(series)
+            painter.setPen(QPen(color, 1.5))
+            painter.setBrush(color)
             painter.drawEllipse(QPointF(to_screen(self.cursor, value)),
                                 3.5, 3.5)
 
