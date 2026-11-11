@@ -89,7 +89,8 @@ def test_tire_has_no_tension_and_lands(mbs):
 
 
 def slipping_wheel(mbs, alpha, c_alpha, mu, delta=0.01, k=2e5, speed=10.0,
-                   commit_first=False, demand=None, **options):
+                   commit_first=False, demand=None, spin=(0, 1, 0),
+                   **options):
     # Heading +x (spin axis y). The wheel slides along d = (cos a, sin a, 0)
     # at constant speed: a prismatic joint and a translational driver.
     s = mbs.DynamicsSystem(1e-3)
@@ -104,7 +105,7 @@ def slipping_wheel(mbs, alpha, c_alpha, mu, delta=0.01, k=2e5, speed=10.0,
     s.Add(mbs.create_translational_driver(
         body_i=g, body_j=w, point_i=[0, 0, R - delta], point_j=Z, axis_i=d,
         func=mbs.DriveFunction.polynomial([0.0, speed])))
-    tire = mbs.create_tire(g, w, [0, 1, 0], R, k, c_alpha=c_alpha, mu=mu,
+    tire = mbs.create_tire(g, w, list(spin), R, k, c_alpha=c_alpha, mu=mu,
                            **options)
     s.Add(tire)
     if demand is not None:
@@ -223,6 +224,22 @@ def test_longitudinal_demand_keeps_the_friction_circle(mbs):
     assert loads["force_j"][1] == pytest.approx(-0.8 * FZ, rel=1e-9)
     state = mbs.get_tire_state(tire)
     assert state["longitudinal_force"] == pytest.approx(-0.6 * FZ, rel=1e-9)
+
+
+def test_longitudinal_demand_is_along_the_travel_on_a_mirrored_wheel(mbs):
+    # The spin axis of a right wheel points the other way: s x n is then
+    # backward.  A brake demand still opposes the travel (+x), and the
+    # side force is the same.
+    alpha = math.radians(15.0)
+    _, left = slipping_wheel(mbs, alpha, 5e4, mu=1.0, demand=-0.6)
+    tire, right = slipping_wheel(mbs, alpha, 5e4, mu=1.0, demand=-0.6,
+                                 spin=(0, -1, 0))
+    assert right["force_j"][0] == pytest.approx(-0.6 * FZ, rel=1e-9)
+    np.testing.assert_allclose(right["force_j"], left["force_j"],
+                               rtol=1e-9, atol=1e-9)
+    _, drive = slipping_wheel(mbs, 0.0, 5e4, mu=1.0, demand=0.3,
+                              spin=(0, -1, 0))
+    assert drive["force_j"][0] == pytest.approx(0.3 * FZ, rel=1e-9)
 
 
 def test_relaxation_lags_over_the_rolled_distance(mbs):

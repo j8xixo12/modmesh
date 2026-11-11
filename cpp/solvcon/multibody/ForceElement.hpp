@@ -313,7 +313,8 @@ public:
     void set_magic_formula(MagicFormulaTire const & model) { m_mf = model; }
     /// The relaxation length (m) of the slip angle; 0 turns the lag off.
     void set_relaxation_length(double length);
-    /// Longitudinal force demand F_x / F_z (+ drive, - brake).
+    /// Longitudinal force demand F_x / F_z along the travel of the wheel
+    /// (+ drive, - brake), for either sense of the spin axis.
     void set_longitudinal(double ratio) { m_fx_ratio = ratio; }
     /// Store the lagged slip angle at the end of an accepted step.
     void commit();

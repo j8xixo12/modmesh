@@ -444,7 +444,9 @@ void TireForce::compute()
             double const cap_y = std::sqrt(std::max(0.0, cap * cap - m_fx * m_fx));
             m_fy = std::max(-cap_y, std::min(cap_y, -m_c_alpha * m_alpha_force));
         }
-        force += m_fy * l + m_fx * hdir;
+        // The demand is along the travel: hdir = s x n points backward
+        // for a spin axis to the other side (a mirrored wheel).
+        force += m_fy * l + (m_vh < 0.0 ? -m_fx : m_fx) * hdir;
     }
     m_force_j = force;
     m_torque_j = cross(arm, force);
