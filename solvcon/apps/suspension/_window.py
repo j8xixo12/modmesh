@@ -963,12 +963,50 @@ class VehicleTab(QWidget):
         row.addWidget(self.longitudinal)
         row.addStretch(1)
         layout.addLayout(row)
+        # The log replay: the accelerations of a RaceChrono export drive
+        # the body; the gyro of the log checks the body rates.
+        row = QHBoxLayout()
+        #: The log file of the replay (None: none chosen).
+        self.log_path = None
+        self.log_label = QLabel("Log replay: no log")
+        self.log_open = _button("Open log...",
+                                lambda: handlers['log_open']())
+        self.log_start = _spin(0.0, 1e5, 0.0, " s", decimals=1, step=1.0)
+        self.log_length = _spin(1.0, 3600.0, 60.0, " s", decimals=0,
+                                step=10.0)
+        self.gyro = QComboBox()
+        for label, axes, signs in self.GYRO_MOUNTS:
+            self.gyro.addItem(label, (axes, signs))
+        self.gyro.setToolTip(
+            "How the logging device sits in the car: which device axis is "
+            "the vehicle x (forward), y (left), z (up).  The log does not "
+            "say; the yaw axis is checked against the GPS.")
+        self.invert_roll = QCheckBox("invert roll")
+        self.invert_pitch = QCheckBox("invert pitch")
+        self.log_run = _button("Replay", lambda: handlers['log_replay'](
+            self.vehicle.currentData(), self.log_path,
+            self.log_start.value(), self.log_length.value(),
+            *self.gyro_mount(), self.bias.value() / 100.0,
+            self.drive.currentData(), self.setups()))
+        self.log_run.setEnabled(False)
+        for widget in (self.log_label, self.log_open, QLabel("from"),
+                       self.log_start, QLabel("for"), self.log_length,
+                       QLabel("gyro"), self.gyro, self.invert_roll,
+                       self.invert_pitch, self.log_run):
+            row.addWidget(widget)
+        row.addStretch(1)
+        layout.addLayout(row)
         # A run input change: the results shown are of the old inputs.
-        for spin in (self.speed, self.rack, self.bias):
+        for spin in (self.speed, self.rack, self.bias, self.log_start,
+                     self.log_length):
             spin.valueChanged.connect(
                 lambda _: handlers['vehicle_input_changed']())
-        self.drive.currentIndexChanged.connect(
-            lambda _: handlers['vehicle_input_changed']())
+        for combo in (self.drive, self.gyro):
+            combo.currentIndexChanged.connect(
+                lambda _: handlers['vehicle_input_changed']())
+        for box in (self.invert_roll, self.invert_pitch):
+            box.toggled.connect(
+                lambda _: handlers['vehicle_input_changed']())
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -991,6 +1029,13 @@ class VehicleTab(QWidget):
         plots.addWidget(self.brake_plot, 0, 1)
         plots.addWidget(self.roll_plot, 1, 0)
         plots.addWidget(self.yaw_plot, 1, 1)
+        self.replay_rate_plot = _plots.KCPlot(
+            "Log replay: body rates, model and log", "Time [s]", "deg/s")
+        self.replay_angle_plot = _plots.KCPlot(
+            "Log replay: body motion of the model", "Time [s]",
+            "deg, mm, g")
+        plots.addWidget(self.replay_rate_plot, 2, 0)
+        plots.addWidget(self.replay_angle_plot, 2, 1)
         #: The handling result the plot compares with (dashed).
         self.reference_handling = None
         self.last_handling = None
@@ -1017,6 +1062,80 @@ class VehicleTab(QWidget):
                        self.longitudinal):
             button.setEnabled(not on)
         self.cancel.setVisible(on)
+
+    #: The mounts of the logging device: label, the device axes along the
+    #: vehicle x, y, z, and their signs.
+    GYRO_MOUNTS = (
+        ("x forward, y left, z up (as logged)", ('x', 'y', 'z'),
+         (1, 1, 1)),
+        ("flat, top forward (x right, y forward, z up)", ('y', 'x', 'z'),
+         (1, -1, 1)),
+        ("upright, screen to the driver (x right, y up)", ('z', 'x', 'y'),
+         (-1, -1, 1)),
+    )
+
+    def gyro_mount(self):
+        """(device axes along the vehicle x, y, z; their signs) with the
+        inversions."""
+        axes, signs = self.gyro.currentData()
+        signs = list(signs)
+        if self.invert_roll.isChecked():
+            signs[0] = -signs[0]
+        if self.invert_pitch.isChecked():
+            signs[1] = -signs[1]
+        return tuple(axes), tuple(signs)
+
+    def set_log(self, path):
+        """The log file of the replay."""
+        import os
+        self.log_path = path
+        self.log_label.setText(f"Log replay: {os.path.basename(path)}"
+                               if path else "Log replay: no log")
+        self.log_label.setToolTip(path or "")
+        self.log_run.setEnabled(bool(path))
+
+    def show_replay(self, out):
+        deg = 180.0 / 3.141592653589793
+        t = list(out['time'])
+        curves = []
+        colors = {'roll_rate': (_plots.CURRENT_COLOR, (230, 120, 30)),
+                  'pitch_rate': ((40, 150, 70), (120, 60, 170))}
+        for key, label in (('roll_rate', "roll rate"),
+                           ('pitch_rate', "pitch rate")):
+            model, logged = colors[key]
+            curves.append((f"{label}, model", t, list(out[key] * deg),
+                           model, False))
+            if key in out['measured']:
+                curves.append((f"{label}, log", list(out['log_time']),
+                               list(out['measured'][key] * deg), logged,
+                               True))
+        self.replay_rate_plot.set_curves(curves)
+        self.replay_angle_plot.set_curves([
+            ("roll [deg]", t, list((out['roll'] - out['roll0']) * deg),
+             _plots.CURRENT_COLOR, False),
+            ("pitch [deg]", t, list((out['pitch'] - out['pitch0']) * deg),
+             _plots.PREVIOUS_COLOR, False),
+            ("heave [mm]", t, list(out['heave'] * 1e3), (40, 150, 70),
+             False),
+            ("a_y [g]", t, list(out['ay'] / 9.81), (120, 120, 120), True)])
+        parts = []
+        for key, label in (('roll_rate', "roll"), ('pitch_rate', "pitch")):
+            c = out['comparison'].get(key)
+            if c is None:
+                continue
+            parts.append(f"{label} rate: correlation {c['correlation']:+.2f}"
+                         f", gain {c['gain']:.2f}, lag {c['lag']:+.2f} s, "
+                         f"rms log {c['rms_measured'] * deg:.2f} deg/s, "
+                         f"rms error {c['rms_error'] * deg:.2f} deg/s")
+        roll = (out['roll'] - out['roll0']) * deg
+        self.status.setText(
+            f"Log replay of {len(out['log_time'])} samples "
+            f"({out['time'][-1]:.1f} s from {out['start']:.1f} s, mean "
+            f"{out['speed'] * 3.6:.0f} km/h): roll {roll.min():+.2f} to "
+            f"{roll.max():+.2f} deg.  "
+            + ("; ".join(parts) if parts else
+               "The log has no gyro roll or pitch rate to compare.")
+            + "  See the warnings for the sign checks of the log.")
 
     def apply_defaults(self, defaults):
         """Show the run inputs and the notes of a vehicle file
@@ -1107,7 +1226,8 @@ class VehicleTab(QWidget):
                  _plots.PREVIOUS_COLOR, True)])
         else:
             self.handling_plot.set_curves([])
-        for plot in (self.brake_plot, self.roll_plot, self.yaw_plot):
+        for plot in (self.brake_plot, self.roll_plot, self.yaw_plot,
+                     self.replay_rate_plot, self.replay_angle_plot):
             plot.set_curves([])
         self.status.setText(note)
 

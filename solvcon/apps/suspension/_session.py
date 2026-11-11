@@ -2068,6 +2068,58 @@ class SuspensionSession(object):
                         vm.wheelbase + understeer * v * v / 9.81)})
         return run
 
+    def run_log_replay(self, stem, path, start=0.0, length=60.0,
+                       gyro_axes=('x', 'y', 'z'), gyro_signs=(1, 1, 1),
+                       brake_bias=0.6, drive_split=0.0, setups=None):
+        """Replay the accelerations of a RaceChrono log on a vehicle
+        (:func:`suspension.replay.acceleration_replay`) and compare the body
+        rates with the gyro of the log.
+
+        :param start: the start of the window (s from the first sample)
+        :param length: the length of the window (s)
+        :return: dict with ``completed``, ``message``, the run, ``log_time``
+            (s from the window start), ``measured`` (``{name: rad/s}``),
+            ``comparison`` (``{name: dict}`` of
+            :func:`suspension.replay.compare`), ``notes``, and ``speed``
+        """
+        rc = self.engine.racechrono
+        rp = self.engine.replay
+        self.warnings = []
+        try:
+            motion = rc.vehicle_motion(rc.read_csv(path), tuple(gyro_axes),
+                                       tuple(gyro_signs))
+            t = motion['time']
+            inside = (t >= float(start)) & (t <= float(start) + float(length))
+            if inside.sum() < 2:
+                raise ValueError(f"the log has no samples from {start} s "
+                                 f"for {length} s (it lasts {t[-1]:.1f} s)")
+            tw = t[inside] - t[inside][0]
+            speed = (float(np.mean(motion['speed'][inside]))
+                     if 'speed' in motion else 20.0)
+            vm = self._vehicle(stem, setups)
+            run = rp.acceleration_replay(
+                self.engine.mbs, vm, tw, motion['ax'][inside],
+                motion['ay'][inside], brake_bias=float(brake_bias),
+                drive_split=float(drive_split), speed=speed, record_dt=0.01)
+            measured = {key: motion[key][inside]
+                        for key in ('roll_rate', 'pitch_rate')
+                        if key in motion}
+            comparison = {key: rp.compare(run['time'], run[key], tw, value)
+                          for key, value in measured.items()}
+        except Exception as exc:
+            self.warnings.append(self._entry(
+                'error', 'vehicle', None, f"log replay failed: {exc}"))
+            return {'completed': False, 'message': str(exc)}
+        for note in motion['notes']:
+            self.warnings.append(self._entry('warning', 'vehicle', None,
+                                             f"log: {note}"))
+        run.update({'completed': True, 'message': '', 'log_time': tw,
+                    'measured': measured, 'comparison': comparison,
+                    'notes': motion['notes'], 'speed': speed,
+                    'path': os.path.abspath(str(path)),
+                    'start': float(start)})
+        return run
+
     # The overview KPIs (see _glossary).
 
     def corner_kpis(self, sprung_mass):

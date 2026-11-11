@@ -1198,6 +1198,45 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
             os.path.join(fixture, 'README.md')))
         self.assertIn("not opened", other.analysis.vehicle.status.text())
 
+    def test_log_replay_and_its_reset(self):
+        log = os.path.join(os.path.dirname(__file__), os.pardir, 'data',
+                           'multibody', 'racechrono_synthetic',
+                           'session_v3.csv')
+        feature = self._open()
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'road_car'))
+        self.assertFalse(vehicle.log_run.isEnabled())
+        feature.set_log(log)
+        self.assertTrue(vehicle.log_run.isEnabled())
+        self.assertIn("session_v3.csv", vehicle.log_label.text())
+        vehicle.log_length.setValue(3.0)
+        vehicle.log_run.click()
+        labels = vehicle.replay_rate_plot.labels()
+        self.assertIn("roll rate, model", labels)
+        self.assertIn("roll rate, log", labels)
+        self.assertTrue(vehicle.replay_angle_plot.labels())
+        self.assertIn("roll rate: correlation", vehicle.status.text())
+        self.assertTrue(feature.animations['vehicle'])
+        self.assertTrue(any("flipped" in w['message']
+                            for w in feature.session.warnings))
+        # Every replay input clears the replay: the window, the mount.
+        for change in (lambda: vehicle.log_start.setValue(1.0),
+                       lambda: vehicle.gyro.setCurrentIndex(1),
+                       lambda: vehicle.invert_roll.setChecked(True),
+                       lambda: feature.set_log(log)):
+            vehicle.log_run.click()
+            self.assertTrue(vehicle.replay_rate_plot.labels())
+            change()
+            self.assertEqual([], vehicle.replay_rate_plot.labels())
+            self.assertEqual([], vehicle.replay_angle_plot.labels())
+            self.assertEqual([], feature.animations['vehicle'])
+        # Another vehicle clears it too.
+        vehicle.log_run.click()
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        self.assertEqual([], vehicle.replay_rate_plot.labels())
+
     def test_background_run_sees_the_vehicle_edits(self):
         feature = self._open()
         feature.ask_save = lambda p: 'temporary'

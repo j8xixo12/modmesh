@@ -223,6 +223,8 @@ class SuspensionApp(base.PilotFeature):
                     'vehicle_open': self.on_vehicle_open,
                     'vehicle_import': self.on_vehicle_import,
                     'vehicle_input_changed': self.on_vehicle_input_changed,
+                    'log_open': self.on_log_open,
+                    'log_replay': self.on_log_replay,
                     'handling': self.on_handling,
                     'vehicle_reference': self.on_vehicle_reference,
                     'longitudinal': self.on_longitudinal,
@@ -913,6 +915,43 @@ class SuspensionApp(base.PilotFeature):
         tab.vehicle.setCurrentIndex(index)
         tab.vehicle.blockSignals(False)
         self.on_vehicle_picked(stem)
+
+    def on_log_open(self):
+        path, _ = QFileDialog.getOpenFileName(
+            None, "Open a RaceChrono CSV export", "", "CSV (*.csv)")
+        if path:
+            self.set_log(path)
+
+    def set_log(self, path):
+        """Take ``path`` as the log of the replay: the replay results of
+        another log go."""
+        self.analysis.vehicle.set_log(path)
+        self.on_vehicle_input_changed()
+
+    def on_log_replay(self, stem, path, start, length, gyro_axes,
+                      gyro_signs, brake_bias, drive_split, setups=None):
+        if not path:
+            return
+
+        def done(outs):
+            out = outs[0]
+            tab = self.analysis.vehicle
+            if out['completed']:
+                tab.show_replay(out)
+                self.set_animation('vehicle', self._vehicle_frames(
+                    [(f"log replay t = {t:.2f} s", p)
+                     for t, p in zip(out['pose_times'], out['poses'])],
+                    out['models']), index=0)
+            else:
+                tab.status.setText(f"failed: {out['message']}")
+
+        self._vehicle_run(
+            f"replaying {os.path.basename(path)} ({length:.0f} s of the "
+            "log)...",
+            [('run_log_replay', (stem, path),
+              {'start': start, 'length': length, 'gyro_axes': gyro_axes,
+               'gyro_signs': gyro_signs, 'brake_bias': brake_bias,
+               'drive_split': drive_split, 'setups': setups})], done)
 
     def on_vehicle_input_changed(self):
         """A run input (speed, rack, brake bias, drive) changed: the

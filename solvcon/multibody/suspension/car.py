@@ -294,7 +294,9 @@ def corner_models(mbs, vm, gravity=9.81):
 
 
 def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
-          steer_func=None, dt=1e-3, speed=0.0, with_slip=False, models=None):
+          steer_func=None, dt=1e-3, speed=0.0, with_slip=False, models=None,
+          support=(SOFT_SUPPORT, SOFT_SUPPORT), support_damping=(0.0, 0.0),
+          patch_support=None):
     """Build the vehicle at its design pose.
 
     :param lateral_acceleration: a_y (m/s^2) of the D'Alembert load
@@ -311,6 +313,14 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
     :param with_slip: tires with the lateral slip force (C_alpha, mu) for a
         dynamic run
     :param models: the preloaded corner models of :func:`corner_models`
+    :param support: (N/m, N m/rad) stiffness of the chassis support in x
+        and y and in yaw
+    :param support_damping: (N s/m, N m s/rad) damping of the chassis
+        support in x and y and in yaw, for a dynamic run on the support
+    :param patch_support: None, or the lateral stiffness (N/m) and damping
+        (N s/m) of each tire at its contact patch, front and rear: ((k_f,
+        c_f), (k_r, c_r)); it holds the patch on the road sideways (the
+        tire carcass and its slip) for a rig without slip forces
     :return: (system, handles) with ``corners``, ``tires``, ``models``,
         ``chassis``, ``arbs``
     """
@@ -368,6 +378,20 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
                                relaxation_length=vm.relaxation_length)
         s.Add(tire)
         out["tires"][name] = tire
+        if patch_support is not None:
+            k_y, c_y = patch_support[0 if front else 1]
+            wc = np.asarray(model.hp["wheel_center"], dtype="float64")
+            spin = np.asarray(model.spin_axis, dtype="float64")
+            down = np.array([0.0, 0.0, -1.0]) + spin[2] * spin
+            down /= np.linalg.norm(down)
+            patch = wc + (wc[2] / -down[2]) * down
+            k6, c6 = np.zeros((6, 6)), np.zeros((6, 6))
+            k6[1, 1], c6[1, 1] = float(k_y), float(c_y)
+            bush = mbs.create_bushing(ground, c.upright, list(patch),
+                                      list(patch - wc), k6.tolist(),
+                                      c6.tolist())
+            s.Add(bush)
+            out.setdefault("patch_supports", {})[name] = bush
     for axle_name in ("front", "rear"):
         left = models[f"{axle_name}_left"]
         if left.arb is None:
@@ -388,11 +412,13 @@ def build(mbs, vm, lateral_acceleration=0.0, gravity=9.81, side_forces=None,
         # point of steady_state(); this soft support holds the free chassis
         # in x, y, and yaw on the way there.
         k = np.zeros((6, 6))
-        k[0, 0] = k[1, 1] = SOFT_SUPPORT
-        k[5, 5] = SOFT_SUPPORT
+        k[0, 0] = k[1, 1] = float(support[0])
+        k[5, 5] = float(support[1])
+        c = np.zeros((6, 6))
+        c[0, 0] = c[1, 1] = float(support_damping[0])
+        c[5, 5] = float(support_damping[1])
         out["chassis_support"] = mbs.create_bushing(
-            ground, chassis, list(cg), Z, k.tolist(),
-            np.zeros((6, 6)).tolist())
+            ground, chassis, list(cg), Z, k.tolist(), c.tolist())
         s.Add(out["chassis_support"])
     s.init()
     return s, out

@@ -819,6 +819,52 @@ class RideVehicleTC(unittest.TestCase):
                                delta=0.03 * abs(run['bicycle_yaw_rate']))
 
 
+@requires_engine
+class LogReplayTC(unittest.TestCase):
+    """The replay of a RaceChrono log on a vehicle: a log whose gyro roll
+    rate is the roll rate of the model itself meets it (the pipeline of
+    the reader, the windowing, the signs, and the comparison)."""
+
+    DATA = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir,
+                        'data', 'multibody', 'racechrono_synthetic')
+
+    def test_the_model_roll_rate_comes_back(self):
+        import csv
+        sess = _session.SuspensionSession(ENGINE)
+        source = os.path.join(self.DATA, 'session_v3.csv')
+        first = sess.run_log_replay('road_car', source, 1.0, 4.0)
+        self.assertTrue(first['completed'], first['message'])
+        self.assertTrue(any("flipped" in w['message']
+                            for w in sess.warnings))
+        with open(source, newline='') as fobj:
+            rows = list(csv.reader(fobj))
+        head = next(k for k, row in enumerate(rows)
+                    if row and 'timestamp' == row[0])
+        col = rows[head].index('x_rate_of_rotation')
+        t0 = float(rows[head + 3][0])
+        deg = 180.0 / np.pi
+        for row in rows[head + 3:]:
+            if row[col]:
+                t = float(row[0]) - t0 - 1.0
+                rate = np.interp(t, first['time'], first['roll_rate'])
+                row[col] = (f"{rate * deg:.5f}"
+                            if 0.0 <= t <= first['time'][-1] else "0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'own.csv')
+            with open(path, 'w', newline='') as fobj:
+                csv.writer(fobj).writerows(rows)
+            out = sess.run_log_replay('road_car', path, 1.0, 4.0)
+        c = out['comparison']['roll_rate']
+        self.assertGreater(c['correlation'], 0.99)
+        self.assertAlmostEqual(c['gain'], 1.0, delta=0.02)
+        self.assertAlmostEqual(c['lag'], 0.0, delta=0.06)
+        self.assertTrue(out['poses'])
+        # A window past the end of the log fails with a message.
+        late = sess.run_log_replay('road_car', source, 50.0, 4.0)
+        self.assertFalse(late['completed'])
+        self.assertIn("no samples", late['message'])
+
+
 class EngineTC(unittest.TestCase):
 
     def test_a_build_without_the_engine_is_reported(self):
