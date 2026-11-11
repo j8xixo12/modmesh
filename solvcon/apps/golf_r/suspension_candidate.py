@@ -27,6 +27,23 @@ Assumptions (also in the ``assumptions`` list of each model):
 * ``PROGRESSIVE_SPRING_RATE`` (N/m^2) is left out: it adds 1.4 % (front)
   and 0.6 % (rear) to the wheel rate at 50 mm of bump;
 * ``ROD_LENGTH`` only sets the AC ride height, which is the design pose here.
+
+Custom Shaders Patch cars may give an axle as ``TYPE=COSMIC``: free links
+(``DJ<n>``, two ball joints between ``BODY_A`` and ``BODY_B``), steering
+joints (``STEER_JOINT_<n>``), and a coilover section
+(``<AXLE>_COILOVER_0``) between two bodies.  :func:`cosmic_points` takes a
+COSMIC axle of four chassis-to-hub links that share two hub points (two
+wishbones) and one steering joint as a double wishbone.  Unlike the DWB
+wheel rates, the coilover acts on its own axis: ``RATE`` (in series with
+``INSTALL_RATE``) and the ``DAMP_*`` slopes are coilover rates, and its
+length limits are the stops (assumptions in the list of the model):
+
+* the COSMIC points are from the wheel centre, as the DWB ones;
+  ``RIM_OFFSET`` is left out;
+* the bump stop touches at ``MIN_LENGTH + BUMPSTOP_GAP``, the droop stop at
+  ``MAX_LENGTH``, both at ``END_RATE``;
+* ``PRELOAD`` and ``PRELOAD_FORCE`` are left out (the design pose is the
+  static pose), as are ``[_EXTENSION]`` and ``[_EXTENSION_FLEX]``.
 """
 
 import configparser
@@ -84,12 +101,13 @@ def cg_height(data_dir):
     return share * front + (1.0 - share) * rear
 
 
-def _damper(section, motion_ratio):
+def _damper(section, motion_ratio, note=None):
     """The AC two-stage damper as a force-velocity table on the spring line.
 
     AC gives wheel-rate slopes (N.s/m) below and above a threshold wheel
     speed (m/s), in bump and in rebound.  On the spring line the speed is
-    mr v and the force F / mr.
+    mr v and the force F / mr.  A COSMIC coilover gives them on its own
+    axis: ``motion_ratio`` 1.
     """
     def side(slow, fast, threshold):
         c_slow = float(section[slow])
@@ -111,9 +129,10 @@ def _damper(section, motion_ratio):
         'kind': 'table',
         'velocity': [1000.0 * motion_ratio * v for v in wheel_v],
         'force': [f / motion_ratio for f in wheel_f],
-        'note': 'AC two-stage damper (DAMP_*), wheel rates divided by the '
-                f'motion ratio {motion_ratio:.4f}; mm/s on the spring '
-                'line (+ rebound), N',
+        'note': note or ('AC two-stage damper (DAMP_*), wheel rates '
+                         'divided by the motion ratio '
+                         f'{motion_ratio:.4f}; mm/s on the spring line '
+                         '(+ rebound), N'),
     }
 
 
@@ -125,14 +144,79 @@ def _kingpin_offset(tyre_point, axis_a, axis_b):
     return float(np.linalg.norm(r - (r @ d) * d))
 
 
+def _vector(text):
+    return np.array([float(v) for v in text.split(',')])
+
+
+def cosmic_points(cfg, axle):
+    """The hardpoints of a COSMIC axle in the names of a DWB one.
+
+    :param cfg: the parsed ``suspensions.ini``
+    :param axle: ``'front'`` or ``'rear'``
+    :return: ``{name: (x, y, z)}`` (m, wheel-centre frame) with the
+        ``WBCAR_*`` and ``WBTYRE_*`` points and the coilover ends
+        ``COILOVER_CAR`` and ``COILOVER_TYRE``
+    :raises ValueError: when the links are not two chassis-to-hub
+        wishbones, or the steering joint or the coilover is not one
+        chassis-to-hub element
+    """
+    section = cfg[axle.upper()]
+    where = f'{axle}: COSMIC'
+
+    def ends(prefix, pos0='POS0', pos1='POS1'):
+        bodies = (section.get(f'{prefix}_BODY_A', '').strip().upper(),
+                  section.get(f'{prefix}_BODY_B', '').strip().upper())
+        if ('CHASSIS', 'HUB_L') != bodies:
+            raise ValueError(f'{where} {prefix} joins {bodies}; only '
+                             'CHASSIS to HUB_L is supported')
+        return (_vector(section[f'{prefix}_{pos0}']),
+                _vector(section[f'{prefix}_{pos1}']))
+
+    links = []
+    while f'DJ{len(links)}' in section:
+        links.append(ends(f'DJ{len(links)}'))
+    hubs = {}
+    for car, hub in links:
+        hubs.setdefault(tuple(np.round(hub, 9)), []).append((car, hub))
+    if 4 != len(links) or 2 != len(hubs) or any(
+            2 != len(arm) for arm in hubs.values()):
+        raise ValueError(f'{where} needs four DJ links that share two hub '
+                         f'points (two wishbones); it has {len(links)} '
+                         f'links on {len(hubs)} hub points')
+    if 'STEER_JOINT_0' not in section or 'STEER_JOINT_1' in section:
+        raise ValueError(f'{where} needs exactly one STEER_JOINT')
+    lower, upper = sorted(hubs.values(), key=lambda arm: arm[0][1][1])
+    points = {}
+    for name, arm in (('BOTTOM', lower), ('TOP', upper)):
+        # The chassis point further forward (+z) is the front one.
+        rear, front = sorted(arm, key=lambda link: link[0][2])
+        points[f'WBCAR_{name}_FRONT'] = front[0]
+        points[f'WBCAR_{name}_REAR'] = rear[0]
+        points[f'WBTYRE_{name}'] = front[1]
+    points['WBCAR_STEER'], points['WBTYRE_STEER'] = ends('STEER_JOINT_0')
+    coil = f'{axle.upper()}_COILOVER_0'
+    if coil not in cfg or f'{axle.upper()}_COILOVER_1' in cfg:
+        raise ValueError(f'{where} needs exactly one coilover ({coil})')
+    section, where = cfg[coil], f'{axle}: {coil}'
+    bodies = (section.get('BODY_A', '').strip().upper(),
+              section.get('BODY_B', '').strip().upper())
+    if ('CHASSIS', 'HUB_L') != bodies:
+        raise ValueError(f'{where} joins {bodies}; only CHASSIS to HUB_L '
+                         'is supported')
+    points['COILOVER_CAR'] = _vector(section['POS_A'])
+    points['COILOVER_TYRE'] = _vector(section['POS_B'])
+    return points
+
+
 def geometry(axle, data_dir):
     """The corner model of the AC hardpoints with unit rates.
 
     The spring, damper, stop, and bar rates are placeholders that
     :func:`candidate` replaces with the AC wheel rates.
 
-    :param axle: ``'front'`` (MacPherson, ``TYPE=STRUT``) or ``'rear'``
-        (double wishbone with a toe link, ``TYPE=DWB``)
+    :param axle: ``'front'`` (MacPherson ``TYPE=STRUT``, or a COSMIC
+        double wishbone on the rack) or ``'rear'`` (double wishbone with a
+        toe link, ``TYPE=DWB`` or COSMIC)
     :type axle: str
     :param data_dir: directory of ``suspensions.ini`` and ``tyres.ini``
     :type data_dir: str or pathlib.Path
@@ -142,16 +226,18 @@ def geometry(axle, data_dir):
     cfg = read_ini(Path(data_dir) / 'suspensions.ini')
     section = cfg[axle.upper()]
     kind = section.get('TYPE', 'STRUT' if 'front' == axle else 'DWB')
-    if kind not in ('STRUT', 'DWB') or ('front' == axle) != (
-            'STRUT' == kind):
+    kind = kind.strip().upper()
+    supported = {'front': ('STRUT', 'COSMIC'), 'rear': ('DWB', 'COSMIC')}
+    if kind not in supported[axle]:
         raise ValueError(f'{axle}: suspension TYPE={kind} is not supported '
-                         '(front STRUT, rear DWB)')
+                         '(front STRUT or COSMIC, rear DWB or COSMIC)')
+    cosmic = cosmic_points(cfg, axle) if 'COSMIC' == kind else {}
     half_track = float(section['TRACK']) / 2
     tyre = tyre_section(axle, data_dir)
     radius = float(tyre['RADIUS'])
 
     def raw(key):
-        return np.array([float(v) for v in section[key].split(',')])
+        return cosmic[key] if cosmic else _vector(section[key])
 
     def point(key):
         # Wheel-centre frame (x inboard, y up, z forward) to the corner
@@ -169,7 +255,7 @@ def geometry(axle, data_dir):
         'lower_rear': link('WBCAR_BOTTOM_REAR', 'WBTYRE_BOTTOM'),
         'tie_rod': link('WBCAR_STEER', 'WBTYRE_STEER', 'front' == axle),
     }
-    if 'rear' == axle:
+    if 'STRUT' != kind:
         links['upper_front'] = link('WBCAR_TOP_FRONT', 'WBTYRE_TOP')
         links['upper_rear'] = link('WBCAR_TOP_REAR', 'WBTYRE_TOP')
         axis = raw('WBTYRE_BOTTOM'), raw('WBTYRE_TOP')
@@ -184,11 +270,11 @@ def geometry(axle, data_dir):
             math.cos(toe_out) * math.cos(camber), -math.sin(camber)]
     center = [0.0, 1000.0 * half_track, 1000.0 * radius]
     model = {
-        'name': f'Golf R {axle} (AC data)',
-        'source': 'Assetto Corsa suspensions.ini and tyres.ini; hardpoints '
-                  'from the wheel centre',
+        'name': f'{car_name(data_dir)} {axle} (AC data)',
+        'source': f'Assetto Corsa suspensions.ini (TYPE={kind}) and '
+                  'tyres.ini; hardpoints from the wheel centre',
         'side': 'left',
-        'type': 'macpherson' if 'front' == axle else 'double_wishbone',
+        'type': 'macpherson' if 'STRUT' == kind else 'double_wishbone',
         'wheel': {'radius': 1000.0 * radius, 'center': center,
                   'spin_axis': spin},
         'upright': {'mass': float(section['HUB_MASS']),
@@ -198,9 +284,15 @@ def geometry(axle, data_dir):
                  'c': float(tyre.get('DAMP', '0')) / 1000.0},
     }
     if 'front' == axle:
+        model['rack'] = {'mass': 1.5, 'axis': [0, 1, 0]}
+    if cosmic:
+        # The coilover on its own axis.
+        model['spring'] = {'upright': point('COILOVER_TYRE'),
+                           'chassis': point('COILOVER_CAR'), 'k': 1.0,
+                           'c': 0.0}
+    elif 'front' == axle:
         model['strut'] = {'top_mount': point('STRUT_CAR'),
                           'upright': point('STRUT_TYRE')}
-        model['rack'] = {'mass': 1.5, 'axis': [0, 1, 0]}
         # The coil spring and the damper on the strut axis.
         model['spring'] = {'upright': point('STRUT_TYRE'),
                            'chassis': point('STRUT_CAR'), 'k': 1.0,
@@ -229,6 +321,62 @@ def geometry(axle, data_dir):
             else 1.0 - float(cfg['BASIC']['CG_LOCATION'])),
     }
     return model
+
+
+def car_name(data_dir):
+    """The ``SCREEN_NAME`` of ``car.ini`` (``[INFO]``), else the folder
+    name."""
+    path = Path(data_dir) / 'car.ini'
+    if path.exists():
+        name = read_ini(path).get('INFO', 'SCREEN_NAME', fallback='')
+        if name.strip():
+            return name.strip()
+    return Path(data_dir).resolve().name
+
+
+def _cosmic_rates(cfg, axle, model, mr):
+    """Put the COSMIC coilover rates on the spring line of ``model``.
+
+    :return: the wheel spring rate and the wheel stop rate (N/m), and the
+        assumptions
+    """
+    section = cfg[f'{axle.upper()}_COILOVER_0']
+    rate = float(section['RATE'])
+    install = float(section.get('INSTALL_RATE', '0'))
+    line = rate * install / (rate + install) if install > 0.0 else rate
+    model['spring']['k'] = line / 1000.0
+    model['spring']['damper'] = _damper(
+        section, 1.0, 'AC COSMIC coilover damper (DAMP_*), coilover rates; '
+        'mm/s on the spring line (+ rebound), N')
+    spring = model['spring']
+    length = float(np.linalg.norm(np.subtract(spring['upright'],
+                                              spring['chassis']))) / 1000.0
+    lo = float(section['MIN_LENGTH']) + float(section.get('BUMPSTOP_GAP',
+                                                          '0'))
+    hi = float(section['MAX_LENGTH'])
+    if not lo < length < hi:
+        raise ValueError(f'{axle}: the coilover length {length:.4f} m is not '
+                         f'between MIN_LENGTH + BUMPSTOP_GAP {lo:.4f} m and '
+                         f'MAX_LENGTH {hi:.4f} m')
+    stop = float(section['END_RATE'])
+    model['stops'] = {
+        'bump_travel': 1000.0 * (length - lo) / mr,
+        'droop_travel': -1000.0 * (hi - length) / mr,
+        'k': stop / 1000.0,
+        'note': 'AC COSMIC coilover: bump at MIN_LENGTH + BUMPSTOP_GAP, '
+                'droop at MAX_LENGTH, END_RATE (coilover rate)'}
+    assumptions = [
+        'COSMIC: four DJ links as two wishbones, STEER_JOINT_0 as the tie '
+        'rod, COILOVER_0 on its own axis',
+        'COSMIC points from the wheel centre (as DWB); RIM_OFFSET left out',
+        f'coilover RATE in series with INSTALL_RATE: {line:.0f} N/m',
+        'coilover stops: bump at MIN_LENGTH + BUMPSTOP_GAP, droop at '
+        'MAX_LENGTH, both END_RATE (END_VTAPER, END_VMAX left out)',
+        'coilover PRELOAD and PRELOAD_FORCE left out (the design pose is '
+        'the static pose)',
+        '[_EXTENSION] and [_EXTENSION_FLEX] (chassis torsion) left out',
+    ]
+    return line * mr * mr, stop * mr * mr, assumptions
 
 
 def motion_ratio(mbs, data):
@@ -261,31 +409,17 @@ def candidate(axle, data_dir):
     section = cfg[axle.upper()]
     model = geometry(axle, data_dir)
     mr = motion_ratio(multibody, model)
-    k_wheel = float(section['SPRING_RATE'])
-    model['spring']['k'] = k_wheel / mr / mr / 1000.0
-    model['spring']['damper'] = _damper(section, mr)
     assumptions = [
         'AC design pose is the static pose',
         'ARB: force per unit differential wheel travel (N/m), roll '
         'stiffness k t^2; equivalent bar geometry',
-        'droop stop rate = BUMP_STOP_RATE',
-        'PROGRESSIVE_SPRING_RATE left out (< 1.5 % at 50 mm)',
         'upright inertia 1 kg m^2 about each axis',
     ]
-    bump = float(section['BUMPSTOP_UP']) * 1000.0
-    droop = -float(section['BUMPSTOP_DN']) * 1000.0
-    if droop >= 0.0:
-        # AC puts this droop stop at the design pose: the wheel cannot drop
-        # below the static height.  The stop needs a travel below static.
-        assumptions.append(f'BUMPSTOP_DN={section["BUMPSTOP_DN"].strip()} '
-                           'puts the droop stop at the static pose; the '
-                           'model uses 1 mm below it')
-        droop = -1.0
-    k_stop = float(section['BUMP_STOP_RATE']) / mr / mr / 1000.0
-    model['stops'] = {'bump_travel': bump, 'droop_travel': droop,
-                      'k': k_stop,
-                      'note': 'AC BUMPSTOP_UP/DN and BUMP_STOP_RATE (wheel '
-                              'rate / mr^2)'}
+    if 'COSMIC' == section.get('TYPE', '').strip().upper():
+        k_wheel, k_stop_wheel, more = _cosmic_rates(cfg, axle, model, mr)
+        assumptions += more
+    else:
+        k_wheel, k_stop_wheel = _ac_rates(section, model, mr, assumptions)
     # The equivalent bar: the roll stiffness it adds per unit torsion rate.
     track = 2.0 * float(model['vehicle']['half_track']) / 1000.0
     arb = float(cfg['ARB'][axle.upper()])
@@ -307,10 +441,38 @@ def candidate(axle, data_dir):
                             f'{arb:g} N/m: {target * math.pi / 180.0:.0f} '
                             'N m/deg of axle roll stiffness')
     model['assumptions'] = assumptions
-    model['wheel_rates'] = {'spring': k_wheel,
-                            'bump_stop': float(section['BUMP_STOP_RATE']),
+    model['wheel_rates'] = {'spring': k_wheel, 'bump_stop': k_stop_wheel,
                             'arb': arb, 'motion_ratio': mr}
     return model
+
+
+def _ac_rates(section, model, mr, assumptions):
+    """Put the AC wheel rates (STRUT, DWB) on the spring line of ``model``.
+
+    :return: the wheel spring rate and the wheel stop rate (N/m)
+    """
+    k_wheel = float(section['SPRING_RATE'])
+    model['spring']['k'] = k_wheel / mr / mr / 1000.0
+    model['spring']['damper'] = _damper(section, mr)
+    assumptions += [
+        'droop stop rate = BUMP_STOP_RATE',
+        'PROGRESSIVE_SPRING_RATE left out (< 1.5 % at 50 mm)',
+    ]
+    bump = float(section['BUMPSTOP_UP']) * 1000.0
+    droop = -float(section['BUMPSTOP_DN']) * 1000.0
+    if droop >= 0.0:
+        # AC puts this droop stop at the design pose: the wheel cannot drop
+        # below the static height.  The stop needs a travel below static.
+        assumptions.append(f'BUMPSTOP_DN={section["BUMPSTOP_DN"].strip()} '
+                           'puts the droop stop at the static pose; the '
+                           'model uses 1 mm below it')
+        droop = -1.0
+    k_stop = float(section['BUMP_STOP_RATE']) / mr / mr / 1000.0
+    model['stops'] = {'bump_travel': bump, 'droop_travel': droop,
+                      'k': k_stop,
+                      'note': 'AC BUMPSTOP_UP/DN and BUMP_STOP_RATE (wheel '
+                              'rate / mr^2)'}
+    return k_wheel, float(section['BUMP_STOP_RATE'])
 
 
 def compare(axle, data_dir):

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .suspension_candidate import cg_height, candidate, read_ini, tyre_section
+from .suspension_candidate import (car_name, cg_height, candidate, read_ini,
+                                   tyre_section)
 from .tire import ac_tire
 
 GRAVITY = 9.81
@@ -18,7 +19,7 @@ RACK_MASS = 1.5
 def tire_data(data_dir):
     """The vehicle tire block from ``tyres.ini`` (AC tyre model v10): the
     Magic Formula of :func:`.tire.ac_tire` per axle and the relaxation
-    length.
+    length (the mean of the axles when they differ).
 
     :return: the ``tire`` block of a vehicle model and the assumptions of
         the mapping
@@ -29,10 +30,13 @@ def tire_data(data_dir):
         tire, assumptions = ac_tire(tyre_section(axle, data_dir))
         block['magic_formula'][axle] = tire.parameters()
         lengths.append(tire.relaxation_length)
+    # The vehicle model has one relaxation length: the mean of the axles.
+    block['relaxation_length'] = 0.5 * (lengths[0] + lengths[1])
     if max(lengths) - min(lengths) > 1e-12:
-        raise ValueError('tyres.ini: RELAXATION_LENGTH differs between the '
-                         'axles')
-    block['relaxation_length'] = lengths[0]
+        assumptions = assumptions + [
+            f'tyres.ini RELAXATION_LENGTH front {lengths[0]:g} m, rear '
+            f'{lengths[1]:g} m: the vehicle uses the mean '
+            f'{block["relaxation_length"]:g} m']
     return block, assumptions
 
 
@@ -67,7 +71,7 @@ def vehicle_data(data_dir):
                sprung * (width ** 2 + length ** 2) / 12.0]
     tire, tire_notes = tire_data(data_dir)
     return {
-        'name': 'Golf R (AC data)',
+        'name': f'{car_name(data_dir)} (AC data)',
         'source': 'Assetto Corsa car.ini, suspensions.ini, tyres.ini',
         'front': front,
         'rear': rear,

@@ -17,7 +17,9 @@ analyses.
 2. In the Vehicle tab, press Import AC car..., pick the car's data folder
    (`car.ini`, `suspensions.ini`, `tyres.ini`, `brakes.ini`,
    `drivetrain.ini`), and save the converted vehicle file.  Its two corner
-   files go beside it.
+   files go beside it.  The axles may be a front `STRUT`, a rear `DWB`, or
+   a Custom Shaders Patch `COSMIC` double wishbone (four links on two hub
+   points, one steering joint, one coilover) on either axle.
 3. The car is in the vehicle list.  Hover the "Data assumptions" line for
    the assumptions of the conversion.  Double-click an axle in the model
    tree to open its corner.  Open vehicle... opens the converted file in a
