@@ -203,6 +203,10 @@ class VehicleModel(object):
         self.cg_height = data["cg_height"] * MM
         self.sprung_inertia = data.get("sprung_inertia",
                                        [500.0, 2000.0, 2200.0])
+        #: Rack travel (m) per radian of the steering wheel, or None.
+        self.rack_ratio = None
+        if data.get("rack_ratio") is not None:
+            self.rack_ratio = math.degrees(float(data["rack_ratio"]) * MM)
         tire = data.get("tire", {})
         self.relaxation_length = float(tire.get("relaxation_length", 0.0))
         static = [0.5 * w for w in axle_loads(self)]

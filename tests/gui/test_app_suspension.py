@@ -12,6 +12,7 @@ installed.
 """
 
 import json
+import math
 import os
 import tempfile
 import unittest
@@ -1416,6 +1417,7 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
         for change in (lambda: vehicle.log_start.setValue(1.0),
                        lambda: vehicle.gyro.setCurrentIndex(1),
                        lambda: vehicle.invert_roll.setChecked(True),
+                       lambda: vehicle.rigid_tire.setChecked(True),
                        lambda: feature.set_log(log)):
             vehicle.log_run.click()
             self.assertTrue(vehicle.replay_rate_plot.labels())
@@ -1423,11 +1425,103 @@ class WorkflowUITC(_Fixture, unittest.TestCase):
             self.assertEqual([], vehicle.replay_rate_plot.labels())
             self.assertEqual([], vehicle.replay_angle_plot.labels())
             self.assertEqual([], feature.animations['vehicle'])
+        # The replay on rigid tires says so, and rolls less.
+        self.assertTrue(vehicle.rigid_tire.isChecked())
+        vehicle.log_run.click()
+        self.assertIn("Rigid tires.", vehicle.status.text())
+        rigid = float(vehicle.status.text().split("roll ")[1].split()[0])
+        vehicle.rigid_tire.setChecked(False)
+        vehicle.log_run.click()
+        self.assertNotIn("Rigid tires.", vehicle.status.text())
+        soft = float(vehicle.status.text().split("roll ")[1].split()[0])
+        self.assertLess(abs(rigid), 0.95 * abs(soft))
         # Another vehicle clears it too.
         vehicle.log_run.click()
         vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
             'coilover_car'))
         self.assertEqual([], vehicle.replay_rate_plot.labels())
+
+    def test_picked_vehicle_shows_in_the_3d_view(self):
+        # The picked vehicle stands in the 3D view before any run, with the
+        # body model of an imported AC car; it is no result (the vehicle
+        # frames stay empty), and the corner tabs show the corner again.
+        data = os.path.join(os.path.dirname(__file__), os.pardir, 'data',
+                            'multibody')
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        feature = self._open()
+        view = feature.view
+        feature.analysis.navigate('vehicle')
+        vehicle = feature.analysis.vehicle
+        vehicle.vehicle.setCurrentIndex(vehicle.vehicle.findData(
+            'coilover_car'))
+        self.assertEqual(4, len(feature._showing_run))
+        self.assertIsNone(view._shell)
+        self.assertFalse(feature.animations.get('vehicle'))
+        target = os.path.join(tmp.name, 'synthetic.json')
+        feature.import_ac_vehicle(os.path.join(data, 'ac_synthetic'), target)
+        shell = view._shell
+        self.assertEqual((3, 3), shell[0].shape)
+        self.assertTrue(all(pane.shell is shell for pane in view.panes))
+        self.assertEqual(4, len(feature._showing_run))
+        self.assertFalse(feature.animations.get('vehicle'))
+        # An input change clears the results, not the model in sight.
+        vehicle.run.click()
+        self.assertTrue(feature.animations['vehicle'])
+        vehicle.speed.setValue(vehicle.speed.value() + 10.0)
+        self.assertEqual([], feature.animations['vehicle'])
+        self.assertEqual(4, len(feature._showing_run))
+        self.assertIs(shell, view._shell)
+        # The pose in sight is the design pose, not the last result.
+        self.assertIs(feature._vehicle_design[1][2], view._last_pose[1])
+        # A log with the steering wheel angle steers the replay by the
+        # rack ratio of the vehicle file.
+        log = os.path.join(tmp.name, 'steer.csv')
+        with open(log, 'w') as fobj:
+            fobj.write("timestamp,speed,lateral_acc,longitudinal_acc,"
+                       "steering_angle\nunix time,m/s,G,G,deg\n"
+                       ",100: gps,200: canbus,200: canbus,200: canbus\n")
+            for k in range(400):
+                turn = math.sin(math.pi * 0.01 * k)
+                fobj.write(f"{1.7e9 + 0.01 * k:.2f},20.0,{0.4 * turn:.5f},"
+                           f"0.0,{1.0 - 40.0 * turn:.4f}\n")
+        feature.set_log(log)
+        vehicle.log_length.setValue(2.0)
+        vehicle.log_run.click()
+        # 40 deg of steering wheel at 2.1 mm / 15 per degree.
+        self.assertRegex(vehicle.status.text(),
+                         r"Steered by the log \(rack -5\.6 to \+5\.6 mm\)")
+        self.assertTrue(feature.animations['vehicle'])
+        self.assertIs(shell, view._shell)
+        notes = " | ".join(w['message'] for w in feature.session.warnings)
+        self.assertIn("zero offset -1.00 deg removed", notes)
+        # A log without it leaves the rack alone, and says so.
+        feature.set_log(os.path.join(data, 'racechrono_synthetic',
+                                     'session_v3.csv'))
+        vehicle.log_run.click()
+        self.assertIn("Not steered: the log has no steering angle",
+                      vehicle.status.text())
+        # A corner tab shows the corner without the body; the vehicle tab
+        # shows the vehicle again.
+        feature.analysis.navigate('sweep')
+        self.assertIsNone(view._shell)
+        self.assertFalse(feature._showing_run)
+        self.assertTrue(all(pane.shell is None for pane in view.panes))
+        feature.analysis.navigate('vehicle')
+        self.assertIs(shell, view._shell)
+        # A vehicle file whose body file is gone still shows, with a
+        # warning.
+        with open(target) as fobj:
+            raw = json.load(fobj)
+        raw['body'] = 'gone.kn5'
+        broken = os.path.join(tmp.name, 'broken.json')
+        with open(broken, 'w') as fobj:
+            json.dump(raw, fobj)
+        feature.open_vehicle_file(broken)
+        self.assertIsNone(view._shell)
+        self.assertEqual(4, len(feature._showing_run))
+        self.assertTrue(any("body model is not shown" in w['message']
+                            for w in feature.session.warnings))
 
     def test_background_run_sees_the_vehicle_edits(self):
         feature = self._open()

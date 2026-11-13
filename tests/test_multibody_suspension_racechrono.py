@@ -133,6 +133,44 @@ def test_a_held_bearing_and_two_sources():
     assert found and float(found.group(1)) > 0.9, notes
 
 
+def test_steering_wheel_sign_and_zero():
+    # A steering angle logged + to the right with a sensor zero of 2.5 deg:
+    # the motion has it + to the left, about the straight-ahead.
+    t = np.arange(0.0, 60.0, 0.02)
+    v = 25.0
+    r = 0.25 * np.sin(2.0 * math.pi * t / 12.0)
+    wheel = np.degrees(15.0 * 2.5 * r / v)
+    rows = [['timestamp', 'speed', 'lateral_acc', 'steering_angle'],
+            ['unix time', 'm/s', 'G', 'deg'],
+            ['', '100: gps', '200: canbus', '200: canbus']]
+    for k in range(t.size):
+        rows.append([f'{1.7e9 + t[k]:.2f}', f'{v:.3f}',
+                     f'{v * r[k] / rc.STANDARD_GRAVITY:.6f}',
+                     f'{2.5 - wheel[k]:.5f}'])
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'steer.csv')
+        with open(path, 'w', newline='') as fobj:
+            csv.writer(fobj).writerows(rows)
+        m = rc.vehicle_motion(rc.read_csv(path))
+    notes = " | ".join(m['notes'])
+    assert "steering angle sign from a_y" in notes
+    assert "the logged sign is flipped" in notes
+    assert "steering angle: zero offset -2.50 deg removed" in notes
+    np.testing.assert_allclose(np.degrees(m['steering_wheel']), wheel,
+                               atol=0.01)
+    # Without a speed the zero stays as logged.
+    for row in rows:
+        del row[1]
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'steer.csv')
+        with open(path, 'w', newline='') as fobj:
+            csv.writer(fobj).writerows(rows)
+        m = rc.vehicle_motion(rc.read_csv(path))
+    assert "no speed, the logged zero is kept" in " | ".join(m['notes'])
+    np.testing.assert_allclose(np.degrees(m['steering_wheel']),
+                               wheel - 2.5, atol=0.01)
+
+
 def test_rejects_a_file_without_a_time_header():
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, 'x.csv')

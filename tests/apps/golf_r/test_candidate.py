@@ -157,7 +157,11 @@ class CandidateTest(unittest.TestCase):
         self.assertEqual((lat['mu'], lat['load_exponent']), (1.1, 0.8))
         self.assertEqual(mf['longitudinal']['mu'], 1.15)
         self.assertEqual(data['tire']['relaxation_length'], 0.3)
+        # The rack travel (mm) per degree of the steering wheel.
+        self.assertAlmostEqual(data['rack_ratio'], 2.1 / 15.0, places=12)
         vm = vc.vehicle_model(self.tmp.name)
+        self.assertAlmostEqual(vm.rack_ratio,
+                               math.degrees(2.1e-3 / 15.0), places=12)
         tire = vm.tire(True)
         self.assertAlmostEqual(
             -tire.force(3000.0, 0.0, math.radians(8.0))[1], 1.1 * 3000.0,

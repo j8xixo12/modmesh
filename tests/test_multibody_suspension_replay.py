@@ -30,6 +30,7 @@ import pytest
 
 from solvcon import multibody
 from solvcon.multibody.suspension import car, longitudinal, replay
+from solvcon.multibody.suspension.metrics import rot
 
 G = 9.81
 RAMP = np.array([0.0, 1.0, 5.0, 8.0])
@@ -106,6 +107,77 @@ def test_roll_step_rings_at_the_roll_model_frequency(road_car, stem):
     omega_fast, zeta_fast = _roll_frequency(fast)
     assert closed < omega_fast < 1.3 * closed
     assert zeta_fast > zeta
+
+
+def test_acceleration_replay_steers_with_the_rack(road_car):
+    # The rack of the log steers the front wheels of the replay by the
+    # steer angle of the linkage; without a rack travel nothing changes.
+    time = np.array([0.0, 0.5, 1.0, 1.5])
+    zero = np.zeros(4)
+    rack = np.array([0.0, 0.0, 0.006, 0.006])
+    plain = replay.acceleration_replay(multibody, road_car, time, zero, zero)
+    still = replay.acceleration_replay(multibody, road_car, time, zero, zero,
+                                       rack=zero)
+    steered = replay.acceleration_replay(multibody, road_car, time, zero,
+                                         zero, rack=rack)
+    np.testing.assert_allclose(still["travel"], plain["travel"], atol=1e-9)
+    np.testing.assert_allclose(still["roll"], plain["roll"], atol=1e-9)
+    assert steered["rack"][-1] == pytest.approx(0.006)
+    assert not plain["rack"].any()
+
+    def heading(run, corner):
+        _, quat = run["poses"][-1]["corners"][corner]["upright"]
+        ahead = rot(quat) @ np.array([1.0, 0.0, 0.0])
+        return math.atan2(ahead[1], ahead[0])
+
+    angle = 0.5 * (heading(steered, "front_left")
+                   + heading(steered, "front_right")) \
+        - 0.5 * (heading(plain, "front_left") + heading(plain, "front_right"))
+    assert angle == pytest.approx(
+        car.kinematic_steer(multibody, road_car, 0.006), rel=0.02)
+    assert abs(angle) > math.radians(0.5)
+    assert heading(steered, "rear_left") == pytest.approx(
+        heading(plain, "rear_left"), abs=1e-4)
+    with pytest.raises(ValueError, match="one rack travel"):
+        replay.acceleration_replay(multibody, road_car, time, zero, zero,
+                                   rack=np.zeros(3))
+
+
+def test_rigid_tires_take_the_tire_out_of_the_roll(road_car):
+    # The same turn on rigid tires: the tire deflection leaves the roll
+    # (the roll model without the tire rate), the wheel travel to the body
+    # and the loads stay (the load transfer is the same).
+    ay = np.array([0.0, 0.0, 0.5, 0.5]) * G
+    soft = replay.acceleration_replay(multibody, road_car, RAMP, np.zeros(4),
+                                      ay)
+    rigid = replay.acceleration_replay(multibody, road_car, RAMP,
+                                       np.zeros(4), ay, rigid_tire=True)
+    roll = [run["roll"][-1] - run["roll0"] for run in (soft, rigid)]
+    # The tire part of the roll, about: the load transfer over the tire
+    # rate and the track of each axle, the mean of the two axles (the
+    # body is one, so the axles share it by their roll stiffness).
+    front, rear = (soft["models"][f"{axle}_left"]
+                   for axle in ("front", "rear"))
+    shift = soft["loads"][-1] - soft["loads"][0]
+    tire = 0.5 * ((shift[1] - shift[0]) / front.tire_k
+                  / road_car.track(True)
+                  + (shift[3] - shift[2]) / rear.tire_k
+                  / road_car.track(False))
+    assert roll[0] - roll[1] == pytest.approx(
+        (1.0 - 1.0 / replay.RIGID_TIRE) * tire, rel=0.15)
+    assert roll[1] < 0.9 * roll[0]
+    # The loads stay within the shift of the mass center with the roll and
+    # of the roll stiffness split without the tire rates.
+    np.testing.assert_allclose(rigid["loads"][-1], soft["loads"][-1],
+                               rtol=0.03)
+    np.testing.assert_allclose(rigid["travel"][-1], soft["travel"][-1],
+                               atol=0.05 * np.abs(soft["travel"][-1]).max())
+    # The models of the vehicle keep their tire rate.
+    assert rigid["models"]["front_left"].tire_k == pytest.approx(
+        replay.RIGID_TIRE * front.tire_k)
+    again = replay.acceleration_replay(multibody, road_car, RAMP,
+                                       np.zeros(4), ay)
+    assert again["models"]["front_left"].tire_k == front.tire_k
 
 
 def test_compare_recovers_gain_and_delay():

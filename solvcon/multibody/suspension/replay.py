@@ -40,6 +40,7 @@ roll; whether a logger removes it is the logger's (RaceChrono documents no
 such step for its calculated channels).
 """
 
+import copy
 import math
 
 import numpy as np
@@ -52,10 +53,18 @@ __all__ = [
     'acceleration_replay',
     'compare',
     'patch_support',
+    'RIGID_TIRE',
 ]
 
 #: The frequency (Hz) of the chassis on its support in x, y, and yaw.
 SUPPORT_HZ = 0.2
+#: The factor on the radial stiffness and damping of the tires of a replay
+#: with rigid tires.  The wheel center then keeps its height over the road
+#: (a tire of 200 N/mm gives way 1 mm instead of 20 mm at 4 kN), so the
+#: body moves on the springs, the bars, and the linkage alone.  On a 967 kg
+#: car the roll gradient is within 3 percent of the one at half the factor;
+#: at 50 the start equilibrium does not converge.
+RIGID_TIRE = 20.0
 
 
 def _smooth(time, values, window):
@@ -81,7 +90,8 @@ def patch_support(vm, speed):
 
 def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
                         brake_bias=0.6, drive_split=0.0, pose_dt=0.02,
-                        smooth=0.0, record_dt=None, speed=20.0):
+                        smooth=0.0, record_dt=None, speed=20.0, rack=None,
+                        rigid_tire=False):
     """The body motion of the vehicle under a measured acceleration
     history.
 
@@ -94,14 +104,23 @@ def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
     :param record_dt: the record interval (s), default ``dt``
     :param speed: the speed (m/s) of the slip damping C_alpha / V of the
         contact patches (the mean speed of the log)
+    :param rack: None, or the rack travel (m) at the times, with the sign
+        of the linkage (:func:`car.kinematic_steer` gives the wheel angle
+        of a travel): the front wheels steer as measured, so the camber, the
+        caster lift, and the scrub of the steered linkage enter the travel
+        and the loads.  The applied forces stay in the road axes of the
+        car: the steer angle does not turn them.
+    :param rigid_tire: leave the tire deflection out (:data:`RIGID_TIRE`):
+        the wheels stay on the road at their radius, a lifted wheel still
+        carries no load
     :return: dict with ``time``, ``ax``, ``ay`` (the inputs used), ``roll``
         (rad, + right side down: the outside of a left turn), ``pitch``
         (rad, + nose down), ``heave`` (m, the CG rise from the start),
         ``roll_rate`` and ``pitch_rate`` (rad/s about the chassis x and
         y), ``travel`` (m, (n, 4) wheel travel to the body from the start,
         + bump, :data:`car.CORNERS` order), ``loads`` (N, (n, 4)),
-        ``support`` (largest support force, N), ``poses`` and
-        ``pose_times``, ``models``
+        ``support`` (largest support force, N), ``rack`` (m, zeros without
+        one), ``poses`` and ``pose_times``, ``models``
     """
     time = np.asarray(time, dtype='float64')
     ax = _smooth(time, np.asarray(ax, dtype='float64'), smooth)
@@ -109,6 +128,11 @@ def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
     if time.ndim != 1 or len(time) < 2 or np.any(np.diff(time) <= 0.0):
         raise ValueError("replay: time must increase")
     models = car.corner_models(mbs, vm, gravity)
+    if rigid_tire:
+        models = {name: copy.copy(model) for name, model in models.items()}
+        for model in models.values():
+            model.tire_k *= RIGID_TIRE
+            model.tire_c *= RIGID_TIRE
     mass_total = vm.sprung_mass + sum(
         2.0 * car._corner_mass(models[f"{a}_left"]) for a in ("front",
                                                               "rear"))
@@ -116,8 +140,21 @@ def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
     omega = 2.0 * math.pi * SUPPORT_HZ
     stiffness = (mass_total * omega ** 2, inertia_z * omega ** 2)
     damping = (2.0 * mass_total * omega, 2.0 * inertia_z * omega)
+    steer = None
+    if rack is not None:
+        rack = np.asarray(rack, dtype='float64')
+        if rack.shape != time.shape:
+            raise ValueError("replay: one rack travel for each time")
+        # The table holds its last value past the end (a step may look
+        # ahead).
+        rel = time - time[0]
+        stamps = [float(v) for v in rel] + [float(rel[-1]) + 1.0]
+        table = [float(v) for v in rack] + [float(rack[-1])]
+        steer = (mbs.DriveFunction.table(stamps, table),
+                 mbs.DriveFunction.table(stamps, [-v for v in table]))
     s, h = car.build(mbs, vm, 0.0, gravity,
                      side_forces={name: 0.0 for name in car.CORNERS},
+                     steer_func=steer,
                      dt=dt, models=models, support=stiffness,
                      support_damping=damping,
                      patch_support=patch_support(vm, speed))
@@ -198,9 +235,9 @@ def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
     record_dt = dt if record_dt is None else float(record_dt)
     every = max(1, int(round(record_dt / dt)))
     pose_every = max(1, int(round(pose_dt / dt)))
-    rec = {"time": [], "ax": [], "ay": [], "roll": [], "pitch": [],
-           "heave": [], "roll_rate": [], "pitch_rate": [], "travel": [],
-           "loads": [], "support": []}
+    rec = {"time": [], "ax": [], "ay": [], "rack": [], "roll": [],
+           "pitch": [], "heave": [], "roll_rate": [], "pitch_rate": [],
+           "travel": [], "loads": [], "support": []}
     poses, pose_times = [], []
     steps = int(math.floor((time[-1] - time[0]) / dt + 1e-9))
     t0 = time[0]
@@ -221,6 +258,8 @@ def acceleration_replay(mbs, vm, time, ax, ay, gravity=9.81, dt=2e-3,
             rec["time"].append(t - t0)
             rec["ax"].append(a_x)
             rec["ay"].append(a_y)
+            rec["rack"].append(0.0 if rack is None else float(
+                np.interp(t, time, rack)))
             rec["roll"].append(car._roll_angle(quat[1]))
             rec["pitch"].append(float(math.atan2(r_ch[0, 2], r_ch[2, 2])))
             rec["heave"].append(float(pos[1][2] - pos0[1][2]))

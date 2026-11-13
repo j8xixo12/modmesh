@@ -257,6 +257,10 @@ class CornerView(object):
     #: Surface colors and the opacities used in see-through mode.
     BODY_LOOKS = {'wheel': ((0.16, 0.16, 0.18), 0.55),
                   'rim': ((0.80, 0.82, 0.86), 0.6)}
+    #: The name, the color, and the opacity of the body shell of a vehicle:
+    #: see-through always, so the suspension inside stays in sight.
+    SHELL = 'vehicle_shell'
+    SHELL_LOOK = ((0.75, 0.10, 0.12), 0.18)
     #: Length in mm of the longest force arrow.
     ARROW_LENGTH = 150.0
     #: A hardpoint is picked within this many pixels of the cursor.
@@ -303,6 +307,7 @@ class CornerView(object):
         self._grid = None
         self._grid_ends = []
         self._geometries = []
+        self._shell = None
         self._last_pose = None
         self._last_states = {}
         self._palette_key = None
@@ -388,6 +393,7 @@ class CornerView(object):
         self._filters.append(filt)
         self.panes.append(pane)
         pane.surface_cache = {}
+        pane.shell = None
         self._palette_key = None
 
     def close(self):
@@ -1064,9 +1070,45 @@ class CornerView(object):
                         body + geometry.suffix,
                         opacity if self.see_through else 1.0)
 
+    def set_shell(self, surface):
+        """Show a body shell that moves with the chassis of the first
+        corner of a pose (a vehicle), or none.
+
+        :param surface: None, or (positions (n, 3) float32 in mm in the
+            design frame of the vehicle, normals (n, 3) float32, triangles
+            (m, 3) uint32)
+        """
+        if surface is self._shell:
+            return
+        self._shell = surface
+        for pane in self.panes:
+            self._build_shell(pane)
+
+    def _build_shell(self, pane):
+        if self.widget is None or pane.shell is self._shell:
+            return
+        pane.shell = self._shell
+        # Adding a mesh reframes the widget camera to its default; keep the
+        # camera the user had.
+        before = pane.state()
+        if self._shell is None:
+            pane.widget.removeObject(self.SHELL)
+        else:
+            positions, normals, indices = self._shell
+            pane.widget.addSurfaceObject(
+                self.SHELL, core.SimpleArrayFloat32(array=positions),
+                core.SimpleArrayFloat32(array=normals),
+                core.SimpleArrayUint32(array=indices))
+            color, opacity = self.SHELL_LOOK
+            pane.widget.setObjectColor(self.SHELL, *color)
+            pane.widget.setObjectOpacity(self.SHELL, opacity)
+            pane.widget.setObjectMaterial(self.SHELL, 0.4, 0.2)
+        pane.set_state(before)
+
     def _build_meshes(self, panes):
         shown = set()
         for pane in panes:
+            self._build_shell(pane)
             for geometry in self._geometries:
                 for name, mesh in geometry.body_meshes().items():
                     if name == 'wheel' + geometry.suffix:
@@ -1244,6 +1286,12 @@ class CornerView(object):
                     widget.setObjectTransform(
                         name, *[float(v) for v in trans], 1.0, 1.0, 1.0,
                         *[float(v) for v in quat])
+            chassis = 'chassis' + geometries[0].suffix
+            if self._shell is not None and chassis in pose:
+                trans, _ = geometries[0].frames({'c': pose[chassis]})['c']
+                widget.setObjectTransform(
+                    self.SHELL, *[float(v) for v in trans], 1.0, 1.0, 1.0,
+                    *[float(v) for v in pose[chassis][1]])
             for name, arrays, key, color, material in surfaces:
                 if (name in pane.surface_cache
                         and pane.surface_cache[name] == key):

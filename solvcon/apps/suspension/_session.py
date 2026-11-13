@@ -1674,11 +1674,14 @@ class SuspensionSession(object):
         The conversion is :func:`solvcon.apps.golf_r.vehicle_candidate.
         vehicle_data`; its assumptions go into the files.  The brake
         share of ``brakes.ini`` and the drive split of ``drivetrain.ini``
-        become the ``brake_bias`` and ``drive_split`` of the vehicle.
+        become the ``brake_bias`` and ``drive_split`` of the vehicle; the
+        KN5 model of the car (:func:`solvcon.apps.golf_r.kn5.find_body`),
+        when it is there, becomes its ``body`` (the path from the vehicle
+        file) for the 3D view.
 
         :return: the stem of the vehicle (the absolute path of ``target``)
         """
-        from solvcon.apps.golf_r import bicycle, vehicle_candidate
+        from solvcon.apps.golf_r import bicycle, kn5, vehicle_candidate
 
         data = vehicle_candidate.vehicle_data(folder)
         shares = bicycle.shares(folder)
@@ -1703,10 +1706,45 @@ class SuspensionSession(object):
             data['brake_bias'] = shares['front_brake_share']
         if 'front_drive_share' in shares:
             data['drive_split'] = shares['front_drive_share']
+        body = kn5.find_body(folder)
+        if body is not None:
+            data['body'] = os.path.relpath(body, target.parent)
         with open(target, 'w') as fobj:
             json.dump(data, fobj, indent=2, default=plain)
             fobj.write("\n")
         return self.add_vehicle_file(target)
+
+    def vehicle_design(self, stem, setups=None):
+        """The vehicle at its design pose, for the 3D view before any run.
+
+        :return: dict with ``models`` (``{corner: model}``) and ``pose``
+            (a :func:`suspension.car.vehicle_pose`)
+        """
+        car = self.engine.car
+        vm = self._vehicle(stem, setups)
+        models = car.corner_models(self.engine.mbs, vm)
+        s, h = car.build(self.engine.mbs, vm, models=models)
+        return {'models': models, 'pose': car.vehicle_pose(s, h)}
+
+    def vehicle_body(self, stem):
+        """The body surface of a vehicle file with a ``body`` (a KN5 model,
+        the path from the vehicle file), or None.
+
+        :return: None, or the dict of :func:`solvcon.apps.golf_r.kn5.
+            body_surface` (m, the origin on the road under the middle of
+            the wheels)
+        :raises ValueError: when the file is not a KN5 model
+        :raises OSError: when the file is not there
+        """
+        from solvcon.apps.golf_r import kn5
+
+        ref = self.vehicle_data(stem).get('body')
+        if not ref:
+            return None
+        path = Path(ref)
+        if not path.is_absolute():
+            path = self._vehicle_file(stem).parent / path
+        return kn5.body_surface(path)
 
     def vehicle_defaults(self, stem):
         """The run inputs and notes a vehicle file gives: ``brake_bias``
@@ -2070,17 +2108,23 @@ class SuspensionSession(object):
 
     def run_log_replay(self, stem, path, start=0.0, length=60.0,
                        gyro_axes=('x', 'y', 'z'), gyro_signs=(1, 1, 1),
-                       brake_bias=0.6, drive_split=0.0, setups=None):
+                       brake_bias=0.6, drive_split=0.0, setups=None,
+                       rigid_tire=False):
         """Replay the accelerations of a RaceChrono log on a vehicle
         (:func:`suspension.replay.acceleration_replay`) and compare the body
         rates with the gyro of the log.
 
         :param start: the start of the window (s from the first sample)
         :param length: the length of the window (s)
+        :param rigid_tire: leave the tire deflection out (the suspension
+            alone carries the body motion)
         :return: dict with ``completed``, ``message``, the run, ``log_time``
             (s from the window start), ``measured`` (``{name: rad/s}``),
             ``comparison`` (``{name: dict}`` of
-            :func:`suspension.replay.compare`), ``notes``, and ``speed``
+            :func:`suspension.replay.compare`), ``notes``, ``speed``,
+            ``steered`` (the rack follows the steering wheel angle of the
+            log by the ``rack_ratio`` of the vehicle), and ``unsteered``
+            (None, or why the rack stays)
         """
         rc = self.engine.racechrono
         rp = self.engine.replay
@@ -2097,10 +2141,25 @@ class SuspensionSession(object):
             speed = (float(np.mean(motion['speed'][inside]))
                      if 'speed' in motion else 20.0)
             vm = self._vehicle(stem, setups)
+            # The front wheels steer as logged when the log has the
+            # steering wheel angle and the vehicle its rack ratio.
+            rack, steering = None, "the log has no steering angle"
+            if 'steering_wheel' in motion:
+                steering = "the vehicle file has no rack_ratio"
+                if vm.rack_ratio is not None:
+                    # The side of the rack travel that steers to the left
+                    # is the linkage's (a rack ahead of or behind the
+                    # axle).
+                    left = math.copysign(1.0, self.engine.car.kinematic_steer(
+                        self.engine.mbs, vm, 1e-3))
+                    rack = (left * abs(vm.rack_ratio)
+                            * motion['steering_wheel'][inside])
+                    steering = None
             run = rp.acceleration_replay(
                 self.engine.mbs, vm, tw, motion['ax'][inside],
                 motion['ay'][inside], brake_bias=float(brake_bias),
-                drive_split=float(drive_split), speed=speed, record_dt=0.01)
+                drive_split=float(drive_split), speed=speed, record_dt=0.01,
+                rack=rack, rigid_tire=bool(rigid_tire))
             measured = {key: motion[key][inside]
                         for key in ('roll_rate', 'pitch_rate')
                         if key in motion}
@@ -2113,7 +2172,13 @@ class SuspensionSession(object):
         for note in motion['notes']:
             self.warnings.append(self._entry('warning', 'vehicle', None,
                                              f"log: {note}"))
+        if steering is not None:
+            self.warnings.append(self._entry(
+                'warning', 'vehicle', None,
+                f"log replay: the wheels are not steered ({steering})"))
         run.update({'completed': True, 'message': '', 'log_time': tw,
+                    'steered': steering is None, 'unsteered': steering,
+                    'rigid_tire': bool(rigid_tire),
                     'measured': measured, 'comparison': comparison,
                     'notes': motion['notes'], 'speed': speed,
                     'path': os.path.abspath(str(path)),

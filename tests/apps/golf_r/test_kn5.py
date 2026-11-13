@@ -121,6 +121,25 @@ class Kn5Test(unittest.TestCase):
         self.assertEqual((15, 3), body['positions'].shape)
         self.assertEqual(14, int(body['indices'].max()))
 
+    def test_the_body_file_of_the_car_data(self):
+        # <car>/data/lods.ini names the models; they are in <car>.
+        car = Path(self.tmp.name) / 'car'
+        data = car / 'data'
+        data.mkdir(parents=True)
+        self.assertIsNone(kn5.find_body(data))
+        (data / 'lods.ini').write_text(
+            '[LOD_0]\nFILE=full.kn5\n[LOD_1]\nFILE=second.kn5 ; far\n')
+        self.assertIsNone(kn5.find_body(data))
+        (car / 'full.kn5').write_bytes(model())
+        self.assertEqual(car / 'full.kn5', kn5.find_body(data))
+        (car / 'second.kn5').write_bytes(model())
+        self.assertEqual(car / 'second.kn5', kn5.find_body(data))
+        # Unpacked data two folders below the car.
+        deep = car / 'unpacked' / 'physics'
+        deep.mkdir(parents=True)
+        (deep / 'lods.ini').write_text('[LOD_1]\nFILE=second.kn5\n')
+        self.assertEqual(car / 'second.kn5', kn5.find_body(deep))
+
     def test_a_cut_or_foreign_file(self):
         data = model()
         cut = Path(self.tmp.name) / 'cut.kn5'

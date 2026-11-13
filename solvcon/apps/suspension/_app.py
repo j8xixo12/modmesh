@@ -131,6 +131,11 @@ class SuspensionApp(base.PilotFeature):
         #: geometries, pose, overlays)]}``, and the one that plays.
         self.animations = {}
         self._animating = None
+        #: The body shell of the picked vehicle (see
+        #: :meth:`_view.SuspensionView.set_shell`) and its design pose
+        #: frame ``(stem, frame)``, or None.
+        self._vehicle_shell = None
+        self._vehicle_design = None
         self.anim_timer = QTimer()
         self.anim_timer.timeout.connect(self._anim_tick)
 
@@ -310,6 +315,8 @@ class SuspensionApp(base.PilotFeature):
             self.on_replay(panel.dynamics.replay.value())
         elif key == 'profile' and self.profile and self.profile['poses']:
             self.on_profile_cursor(panel.profile.slider.value())
+        elif key == 'vehicle' and self.session.vehicle_stem is not None:
+            self.show_vehicle_design()
         else:
             self.update_cursor()
 
@@ -460,6 +467,7 @@ class SuspensionApp(base.PilotFeature):
             aim = len(self._showing_run) != len(self._geometries)
             self._showing_run = False
             self._geometry_setup = None
+            self.view.set_shell(None)
             self._rebuild_view(aim=aim)
         forces = sess.forces() if self.show_forces else None
         overlays = {key: ends for key, ends in sess.overlays().items()
@@ -738,6 +746,8 @@ class SuspensionApp(base.PilotFeature):
             vehicle.clear_results(note)
             if 'vehicle' in self.animations:
                 self.set_animation('vehicle', [])
+            # The design pose shown is of the old corner as well.
+            self._vehicle_design = None
             if vehicle.vehicle.count():
                 vehicle.show_vehicle_setup(self.session.vehicle_setup(
                     vehicle.vehicle.currentData()))
@@ -906,6 +916,8 @@ class SuspensionApp(base.PilotFeature):
         # its 3D frames.
         tab.clear_results(keep_reference=False)
         self.set_animation('vehicle', [])
+        self._vehicle_design = None
+        self.show_vehicle_design()
         self.analysis.overview.clear(_overview.VEHICLE_GROUPS,
                                      f"vehicle {stem}: run the analyses")
 
@@ -984,7 +996,8 @@ class SuspensionApp(base.PilotFeature):
         self.on_vehicle_input_changed()
 
     def on_log_replay(self, stem, path, start, length, gyro_axes,
-                      gyro_signs, brake_bias, drive_split, setups=None):
+                      gyro_signs, brake_bias, drive_split, setups=None,
+                      rigid_tire=False):
         if not path:
             return
 
@@ -1006,7 +1019,8 @@ class SuspensionApp(base.PilotFeature):
             [('run_log_replay', (stem, path),
               {'start': start, 'length': length, 'gyro_axes': gyro_axes,
                'gyro_signs': gyro_signs, 'brake_bias': brake_bias,
-               'drive_split': drive_split, 'setups': setups})], done)
+               'drive_split': drive_split, 'setups': setups,
+               'rigid_tire': rigid_tire})], done)
 
     def on_vehicle_input_changed(self):
         """A run input (speed, rack, brake bias, drive) changed: the
@@ -1015,6 +1029,7 @@ class SuspensionApp(base.PilotFeature):
         self.analysis.vehicle.clear_results(
             "an input changed: run the analysis again")
         self.set_animation('vehicle', [])
+        self.show_vehicle_design()
         self.analysis.overview.clear(
             _overview.VEHICLE_GROUPS,
             "a vehicle input changed: run the analyses again")
@@ -1036,6 +1051,7 @@ class SuspensionApp(base.PilotFeature):
         tab = self.analysis.vehicle
         tab.clear_results("the setup changed: run the analysis again")
         self.set_animation('vehicle', [])
+        self.show_vehicle_design()
         self.analysis.overview.clear(
             _overview.VEHICLE_GROUPS,
             "the vehicle setup changed: run the analyses again")
@@ -1246,7 +1262,9 @@ class SuspensionApp(base.PilotFeature):
         index = max(0, min(int(index), len(frames) - 1))
         label, geometries, pose, overlays = frames[index][:4]
         forces = frames[index][4] if len(frames[index]) > 4 else None
-        self._show_other(geometries, pose, overlays, forces)
+        self._show_other(geometries, pose, overlays, forces,
+                         shell=self._vehicle_shell if 'vehicle' == key
+                         else None)
         self._bar(key).label.setText(f"{label} ({index + 1} of "
                                      f"{len(frames)})")
 
@@ -1278,15 +1296,67 @@ class SuspensionApp(base.PilotFeature):
         bar.slider.setValue((bar.slider.value() + 1) % count)
 
     def _vehicle_frames(self, items, models):
-        """Frames of vehicle poses: ``items`` of (label, vehicle pose)."""
+        """Frames of vehicle poses: ``items`` of (label, vehicle pose).
+        The box outline of the body is left out when the vehicle has a
+        body shell."""
         geometries = _scene.vehicle_geometries(models)
         frames = []
         for label, vpose in items:
             pose = _scene.vehicle_view_pose(vpose)
-            body = _scene.vehicle_body_segments(geometries, pose)
-            frames.append((label, geometries, pose,
-                           {'vehicle_body': body}))
+            overlays = {}
+            if self._vehicle_shell is None:
+                overlays['vehicle_body'] = _scene.vehicle_body_segments(
+                    geometries, pose)
+            frames.append((label, geometries, pose, overlays))
         return frames
+
+    def _load_vehicle_shell(self, stem, geometries):
+        """The body shell of the vehicle file (its ``body``), placed over
+        the middle of the wheels of the model, or None."""
+        self._vehicle_shell = None
+        try:
+            body = self.session.vehicle_body(stem)
+        except (OSError, ValueError) as exc:
+            sess = self.session
+            sess.warnings = sess.warnings + [sess._entry(
+                'warning', 'vehicle', None,
+                f"the body model is not shown: {exc}")]
+            self.analysis.warnings.show_entries(sess.warnings)
+            return
+        if body is None:
+            return
+        mid = np.mean([g.hp['wheel_center'] for g in geometries], axis=0)
+        mid[2] = 0.0
+        self._vehicle_shell = (
+            np.ascontiguousarray(_scene.MM * body['positions'] + mid,
+                                 dtype='float32'),
+            np.ascontiguousarray(body['normals'], dtype='float32'),
+            np.ascontiguousarray(body['indices'].reshape(-1, 3),
+                                 dtype='uint32'))
+
+    def show_vehicle_design(self):
+        """Show the picked vehicle at its design pose in the 3D view: the
+        model in sight before any run and after the results are cleared.
+        It is no result: the vehicle frames stay empty."""
+        stem = self.session.vehicle_stem
+        if stem is None or self.analysis is None:
+            return
+        tab = self.analysis.vehicle
+        if self.analysis.tabs.currentWidget().widget() is not tab:
+            return
+        if self._vehicle_design is None or self._vehicle_design[0] != stem:
+            try:
+                out = self.session.vehicle_design(stem)
+            except Exception as exc:
+                tab.status.setText(f"the vehicle is not shown: {exc}")
+                return
+            geometries = _scene.vehicle_geometries(out['models'])
+            self._load_vehicle_shell(stem, geometries)
+            self._vehicle_design = (stem, self._vehicle_frames(
+                [("design pose", out['pose'])], out['models'])[0])
+        _, geometries, pose, overlays = self._vehicle_design[1]
+        self._show_other(geometries, pose, overlays, None,
+                         shell=self._vehicle_shell)
 
     #: The displacement scale of the compliance frames in the 3D view.
     COMPLIANCE_SCALE = 20.0
@@ -1507,10 +1577,12 @@ class SuspensionApp(base.PilotFeature):
         self._show_other([self._run_geometry], pose,
                          {'road_profile': self.run.road_profile(pose, time)})
 
-    def _show_other(self, geometries, pose, overlays=None, forces=None):
+    def _show_other(self, geometries, pose, overlays=None, forces=None,
+                    shell=None):
         """Pose the view with something else than the sweep (the quarter
         car, the profile); the next sweep cursor move rebuilds the sweep
-        corners."""
+        corners.  ``shell`` is the body shell of a vehicle pose."""
+        self.view.set_shell(shell)
         # The geometry objects, not their names: two models share names.
         shown = tuple(geometries)
         if not (self._showing_run

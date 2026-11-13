@@ -63,6 +63,7 @@ ALIASES = {
                'y_gyro', 'rotation_rate_y'),
     'z_rate': ('z_rate_of_rotation', 'z_rotation_rate', 'gyro_z',
                'z_gyro', 'rotation_rate_z', 'yaw_rate'),
+    'steering': ('steering_angle', 'steering_wheel_angle', 'steering'),
 }
 
 STANDARD_GRAVITY = 9.80665
@@ -180,6 +181,11 @@ def _fill(time, values):
 MIN_AGREEMENT = 0.3
 #: The low-pass window (s) of the sign checks.
 CHECK_WINDOW = 1.0
+#: The linear range of the steering zero: |a_y| below (m/s^2) and the
+#: speed above (m/s).
+STEER_ZERO_RANGE = (3.0, 15.0)
+#: The fewest samples in the linear range for a steering zero.
+STEER_ZERO_SAMPLES = 100
 
 
 def _gps_rate(time, values):
@@ -227,6 +233,34 @@ def _signed(time, values, reference, name, what, notes):
     return -values if c < 0.0 else values
 
 
+def _steering(time, wheel, ay, speed, notes):
+    """The steering wheel angle, + to the left, from its zero.
+
+    The sign is the one that agrees with a_y (+ in a left turn).  The zero
+    of the angle sensor is the intercept b of the fit angle = a (a_y /
+    V^2) + b, the angle against the path curvature, over the linear range
+    (:data:`STEER_ZERO_RANGE`): a car that drives straight has no
+    curvature.  Without a speed the logged zero is kept.
+    """
+    wheel = _signed(time, wheel, ay, "steering angle", "a_y", notes)
+    if speed is None:
+        notes.append("steering angle: no speed, the logged zero is kept")
+        return wheel
+    a_max, v_min = STEER_ZERO_RANGE
+    lin = (np.abs(ay) < a_max) & (speed > v_min)
+    if lin.sum() < STEER_ZERO_SAMPLES:
+        notes.append("steering angle: too few samples in the linear range, "
+                     "the logged zero is kept")
+        return wheel
+    fit = np.linalg.lstsq(np.column_stack(
+        [ay[lin] / speed[lin] ** 2, np.ones(int(lin.sum()))]), wheel[lin],
+        rcond=None)[0]
+    notes.append(f"steering angle: zero offset "
+                 f"{math.degrees(fit[1]):+.2f} deg removed (fit against "
+                 "the path curvature)")
+    return wheel - fit[1]
+
+
 def vehicle_motion(log, gyro_axes=('x', 'y', 'z'), gyro_signs=(1, 1, 1),
                    prefer_source=None):
     """The motion of the vehicle in the axes of :mod:`suspension.car` (x
@@ -245,7 +279,8 @@ def vehicle_motion(log, gyro_axes=('x', 'y', 'z'), gyro_signs=(1, 1, 1),
     :return: dict with ``time`` (s from the first sample), ``ax``, ``ay``
         (m/s^2), and when present ``speed`` (m/s), ``roll_rate``,
         ``pitch_rate``, ``yaw_rate`` (rad/s, about the vehicle x, y, z),
-        ``gps_yaw_rate``; and ``notes`` (list of str)
+        ``gps_yaw_rate``, ``steering_wheel`` (rad, + to the left, see
+        :func:`_steering`); and ``notes`` (list of str)
     :raises ValueError: without a time or a lateral acceleration channel
     """
     data = log['data']
@@ -299,6 +334,9 @@ def vehicle_motion(log, gyro_axes=('x', 'y', 'z'), gyro_signs=(1, 1, 1),
         notes.append("no GPS speed and bearing: the a_y sign is taken as "
                      "+ to the left (assumed)")
     out['ax'], out['ay'] = ax, ay
+    wheel = channel('steering')
+    if wheel is not None:
+        out['steering_wheel'] = _steering(time, wheel, ay, speed, notes)
     rates = {}
     for axis in ('x', 'y', 'z'):
         values = channel(f'{axis}_rate')

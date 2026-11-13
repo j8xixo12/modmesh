@@ -1088,11 +1088,17 @@ class VehicleTab(QWidget):
             "say; the yaw axis is checked against the GPS.")
         self.invert_roll = QCheckBox("invert roll")
         self.invert_pitch = QCheckBox("invert pitch")
+        self.rigid_tire = QCheckBox("rigid tires")
+        self.rigid_tire.setToolTip(
+            "Leave the tire deflection out: the wheels stay on the road at "
+            "their radius, so the body moves on the springs, the bars, "
+            "and the linkage alone.")
         self.log_run = _button("Replay", lambda: handlers['log_replay'](
             self.vehicle.currentData(), self.log_path,
             self.log_start.value(), self.log_length.value(),
             *self.gyro_mount(), self.bias.value() / 100.0,
-            self.drive.currentData(), self.setups()))
+            self.drive.currentData(), self.setups(),
+            self.rigid_tire.isChecked()))
         self.log_run.setEnabled(False)
         for widget in (self.log_label, self.log_open, QLabel("from"),
                        self.log_start, QLabel("for"), self.log_length):
@@ -1101,7 +1107,8 @@ class VehicleTab(QWidget):
         replay.addLayout(row)
         row = QHBoxLayout()
         for widget in (QLabel("Device orientation"), self.gyro,
-                       self.invert_roll, self.invert_pitch, self.log_run):
+                       self.invert_roll, self.invert_pitch, self.rigid_tire,
+                       self.log_run):
             row.addWidget(widget)
         row.addStretch(1)
         replay.addLayout(row)
@@ -1113,7 +1120,7 @@ class VehicleTab(QWidget):
         for combo in (self.drive, self.gyro):
             combo.currentIndexChanged.connect(
                 lambda _: handlers['vehicle_input_changed']())
-        for box in (self.invert_roll, self.invert_pitch):
+        for box in (self.invert_roll, self.invert_pitch, self.rigid_tire):
             box.toggled.connect(
                 lambda _: handlers['vehicle_input_changed']())
         plots = QGridLayout()
@@ -1236,6 +1243,11 @@ class VehicleTab(QWidget):
             f"({out['time'][-1]:.1f} s from {out['start']:.1f} s, mean "
             f"{out['speed'] * 3.6:.0f} km/h): roll {roll.min():+.2f} to "
             f"{roll.max():+.2f} deg.  "
+            + ("Rigid tires.  " if out.get('rigid_tire') else "")
+            + (f"Steered by the log (rack {out['rack'].min() * 1e3:+.1f} "
+               f"to {out['rack'].max() * 1e3:+.1f} mm).  "
+               if out.get('steered') else
+               f"Not steered: {out.get('unsteered')}.  ")
             + ("; ".join(parts) if parts else
                "The log has no gyro roll or pitch rate to compare.")
             + "  See the warnings for the sign checks of the log.")

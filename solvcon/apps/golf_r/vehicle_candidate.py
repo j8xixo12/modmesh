@@ -52,7 +52,9 @@ def vehicle_data(data_dir):
     * the sprung inertia of the AC box ``INERTIA`` = width, height, length
       (m): I = m (a^2 + b^2) / 12.
 
-    :return: vehicle model data (mm, kg) with ``assumptions``
+    :return: vehicle model data (mm, kg) with ``assumptions``; with the
+        steering ratios of ``car.ini`` also ``rack_ratio`` (mm of rack
+        travel per degree of the steering wheel)
     :rtype: dict
     """
     data_dir = Path(data_dir)
@@ -70,7 +72,17 @@ def vehicle_data(data_dir):
                sprung * (tall ** 2 + length ** 2) / 12.0,
                sprung * (width ** 2 + length ** 2) / 12.0]
     tire, tire_notes = tire_data(data_dir)
+    steering = {}
+    ini = read_ini(data_dir / 'car.ini')
+    controls = ini['CONTROLS'] if ini.has_section('CONTROLS') else {}
+    if 'STEER_RATIO' in controls and 'LINEAR_STEER_ROD_RATIO' in controls:
+        # AC: the rod moves LINEAR_STEER_ROD_RATIO m per degree of
+        # (steering wheel angle / STEER_RATIO).
+        steering['rack_ratio'] = (
+            1000.0 * float(controls['LINEAR_STEER_ROD_RATIO'])
+            / float(controls['STEER_RATIO']))
     return {
+        **steering,
         'name': f'{car_name(data_dir)} (AC data)',
         'source': 'Assetto Corsa car.ini, suspensions.ini, tyres.ini',
         'front': front,

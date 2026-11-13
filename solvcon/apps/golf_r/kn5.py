@@ -18,13 +18,16 @@ z up), in metres, with the origin under the middle of the four wheel
 nodes, at the KN5 ground height.
 """
 
+import configparser
 import struct
+from pathlib import Path
 
 import numpy as np
 
 __all__ = [
     'read',
     'body_surface',
+    'find_body',
     'WHEEL_NODES',
 ]
 
@@ -156,6 +159,28 @@ def read(path):
         raise ValueError(f"{path}: {len(reader.data) - reader.pos} bytes "
                          "after the node tree")
     return nodes
+
+
+def find_body(data_dir):
+    """The KN5 file of the body of an AC car for an outline, or None.
+
+    ``lods.ini`` of the car data lists the models by level of detail; the
+    second one (``LOD_1``, some ten thousand triangles) is enough for an
+    outline, the first one is the full model.  The file is beside the data
+    folder (``<car>/data``) or up to two folders above it (unpacked data).
+    """
+    data_dir = Path(data_dir)
+    lods = configparser.ConfigParser(inline_comment_prefixes=(';',),
+                                     strict=False)
+    lods.read(data_dir / 'lods.ini')
+    for section in ('LOD_1', 'LOD_0'):
+        name = lods.get(section, 'FILE', fallback='').strip()
+        if not name:
+            continue
+        for folder in (data_dir, *list(data_dir.resolve().parents)[:2]):
+            if (folder / name).is_file():
+                return folder / name
+    return None
 
 
 def _under(nodes, index, names):
