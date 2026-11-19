@@ -180,6 +180,28 @@ def test_rigid_tires_take_the_tire_out_of_the_roll(road_car):
     assert again["models"]["front_left"].tire_k == front.tire_k
 
 
+def test_tolerances_of_the_acceleration_replay_keep_the_result(
+        road_car, monkeypatch):
+    # A step into a turn with braking on a coarse output step, so that the
+    # tolerances set the integrator step: the default against tolerances a
+    # thousand times tighter gives the same body motion and wheel loads.
+    # Ten times looser tolerances are outside these bounds.
+    time = np.array([0.0, 0.2, 0.22, 1.5])
+    ax = np.array([0.0, 0.0, -0.4, -0.4]) * G
+    ay = np.array([0.0, 0.0, 0.6, 0.6]) * G
+    loose = replay.acceleration_replay(multibody, road_car, time, ax, ay,
+                                       dt=0.02)
+    monkeypatch.setattr(replay, "TOLERANCES", (1e-7, 1e-10))
+    tight = replay.acceleration_replay(multibody, road_car, time, ax, ay,
+                                       dt=0.02)
+    assert np.abs(tight["roll"] - tight["roll0"]).max() > math.radians(0.5)
+    for key in ("roll", "pitch"):
+        np.testing.assert_allclose(loose[key], tight[key],
+                                   atol=math.radians(2e-5))
+    np.testing.assert_allclose(loose["travel"], tight["travel"], atol=1.5e-6)
+    np.testing.assert_allclose(loose["loads"], tight["loads"], atol=0.3)
+
+
 def test_compare_recovers_gain_and_delay():
     t = np.linspace(0.0, 10.0, 1001)
     sim = np.sin(2.0 * math.pi * 0.5 * t)

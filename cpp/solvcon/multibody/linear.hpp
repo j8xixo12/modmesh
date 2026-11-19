@@ -204,9 +204,10 @@ SimpleArray<double> min_norm_solve(SimpleArray<double> const & a, SimpleArray<do
 
 /**
  * Solve a x = b for a possibly redundant or singular system.  The direct
- * solve (lu_solve for a square a, least_squares otherwise) is accepted if it
+ * solve (LU for a square a, least_squares otherwise) is accepted if it
  * succeeds and |a x - b|_inf < 1e-8 |b|_inf.  Otherwise the result is
- * min_norm_solve(a, b, 1e-12).
+ * min_norm_solve(a, b, 1e-12).  The LU skips the condition estimate of
+ * lu_solve when the smallest pivot is at least 1e-13 of the largest.
  *
  * @return Vector of length n.
  * @throws std::runtime_error if a or b has a non-finite element.

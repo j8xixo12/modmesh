@@ -135,6 +135,23 @@ public:
         }
     }
 
+    /// min |U(i, i)| / max |U(i, i)|, 0 for a zero pivot: a cheap sign of a
+    /// singular matrix (not a bound of the condition number).
+    double pivot_ratio() const
+    {
+        if (m_singular || m_n == 0)
+        {
+            return 0.0;
+        }
+        double lo = std::fabs(at(0, 0)), hi = lo;
+        for (ssize_t i = 1; i < m_n; ++i)
+        {
+            lo = std::min(lo, std::fabs(at(i, i)));
+            hi = std::max(hi, std::fabs(at(i, i)));
+        }
+        return (hi > 0.0) ? lo / hi : 0.0;
+    }
+
     /// 1 / (|A|_1 |A^-1|_1), with |A^-1|_1 estimated by Hager-Higham.
     double rcond() const
     {
@@ -226,6 +243,12 @@ private:
             }
             for (ssize_t i = k + 1; i < m_n; ++i)
             {
+                // The matrices of a mechanism are mostly zero: a zero
+                // multiplier leaves the row as it is.
+                if (at(i, k) == 0.0)
+                {
+                    continue;
+                }
                 double const l = at(i, k) / at(k, k);
                 at(i, k) = l;
                 for (ssize_t j = k + 1; j < m_n; ++j)
@@ -257,7 +280,17 @@ double qr_rcond(SimpleArray<double> const & r)
 
 } /* end namespace */
 
-bool lu_solve(SimpleArray<double> const & a, SimpleArray<double> const & b, SimpleArray<double> & x)
+namespace
+{
+
+/// Pivot ratio above which solve_by_lu() with quick set skips the condition
+/// estimate.
+constexpr double quick_pivot_ratio = 1e-13;
+
+/// lu_solve().  With quick set, a pivot ratio of at least quick_pivot_ratio
+/// accepts the factorization without the condition estimate (several more
+/// triangular solves); the caller must then check the residual.
+bool solve_by_lu(SimpleArray<double> const & a, SimpleArray<double> const & b, SimpleArray<double> & x, bool quick)
 {
     if (nrow(a) != nrow(b))
     {
@@ -269,7 +302,7 @@ bool lu_solve(SimpleArray<double> const & a, SimpleArray<double> const & b, Simp
         return true;
     }
     DenseLu const lu(a);
-    if (!(lu.rcond() >= machine_eps))
+    if (!(quick && lu.pivot_ratio() >= quick_pivot_ratio) && !(lu.rcond() >= machine_eps))
     {
         return false;
     }
@@ -289,6 +322,13 @@ bool lu_solve(SimpleArray<double> const & a, SimpleArray<double> const & b, Simp
         }
     }
     return true;
+}
+
+} /* end namespace */
+
+bool lu_solve(SimpleArray<double> const & a, SimpleArray<double> const & b, SimpleArray<double> & x)
+{
+    return solve_by_lu(a, b, x, false);
 }
 
 bool least_squares(SimpleArray<double> const & a, SimpleArray<double> const & b, SimpleArray<double> & x)
@@ -452,7 +492,8 @@ SimpleArray<double> robust_solve(SimpleArray<double> const & a, SimpleArray<doub
 {
     require_finite(a, b, "robust_solve");
     SimpleArray<double> x;
-    bool const ok = (nrow(a) == ncol(a)) ? lu_solve(a, b, x) : least_squares(a, b, x);
+    // The residual check below stands in for the condition estimate.
+    bool const ok = (nrow(a) == ncol(a)) ? solve_by_lu(a, b, x, true) : least_squares(a, b, x);
     if (ok)
     {
         double const b_norm = norm_inf(b);
