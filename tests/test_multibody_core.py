@@ -7,6 +7,8 @@ Tests for math functions, joint types, and solver integration.
 """
 
 import math
+import threading
+import time
 
 import numpy as np
 import pytest
@@ -284,6 +286,52 @@ class TestSolverIntegration:
             for v in p:
                 assert math.isfinite(v), (
                     f"Non-finite after initial rotation: {p}")
+
+
+class TestThreads:
+
+    def test_solve_lets_other_python_threads_run(self, mbs):
+        # A pendulum with a long output step, so that one solve() takes
+        # the adaptive integrator many steps.  A Python thread that loops
+        # meanwhile never waits as long as the call lasts (it waits for
+        # all of the call if the call holds the interpreter).
+        s = mbs.DynamicsSystem(40.0)
+        ground = mbs.create_ground(0)
+        body = mbs.create_mobilized_body(
+            1, [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+            [0, 0, 0], 1.0, [1, 1, 1], [0, -9.81, 0], [0, 0, 0])
+        s.Add(ground)
+        s.Add(body)
+        s.Add(mbs.create_joint(1, [0, 0, 0], [-1, 0, 0], [0, 0, 0],
+                               [0, 0, 0], [0, 0, 1], [0, 0, 1], ground,
+                               body))
+        s.Assembly()
+        s.init()
+        s.set_integrator("rk45")
+        longest = [0.0]
+        started = threading.Event()
+        stop = threading.Event()
+
+        def loop():
+            last = time.perf_counter()
+            while not stop.is_set():
+                started.set()
+                now = time.perf_counter()
+                longest[0] = max(longest[0], now - last)
+                last = now
+
+        thread = threading.Thread(target=loop)
+        thread.start()
+        try:
+            started.wait()
+            begin = time.perf_counter()
+            s.solve()
+            lasted = time.perf_counter() - begin
+        finally:
+            stop.set()
+            thread.join()
+        assert lasted > 0.05
+        assert longest[0] < 0.5 * lasted
 
 
 class TestDrivingConstraint:

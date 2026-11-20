@@ -445,7 +445,7 @@ WrapDynamicsSystem::WrapDynamicsSystem(py::module & mod, char const * pyname, ch
         .def("get_njoint", &wrapped_type::njoint)
         .def("Assembly", &wrapped_type::assemble)
         .def("init", &wrapped_type::init)
-        .def("solve", &wrapped_type::solve)
+        .def("solve", &wrapped_type::solve, py::call_guard<py::gil_scoped_release>(), "Advance one output step. Other Python threads run during the call; two threads must not use one system at the same time.")
         .def("get_body_positions", &wrapped_type::body_positions)
         .def("get_body_angles", &wrapped_type::body_angles)
         .def("get_body_accelerations", &wrapped_type::body_accelerations)
@@ -467,7 +467,11 @@ WrapDynamicsSystem::WrapDynamicsSystem(py::module & mod, char const * pyname, ch
             "find_equilibrium",
             [](wrapped_type & self, double tol, int32_t max_iter)
             {
-                mb::EquilibriumResult const r = self.find_equilibrium(tol, max_iter);
+                mb::EquilibriumResult r;
+                {
+                    py::gil_scoped_release const release;
+                    r = self.find_equilibrium(tol, max_iter);
+                }
                 py::dict d;
                 d["converged"] = r.converged;
                 d["iterations"] = r.iterations;
